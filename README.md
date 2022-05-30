@@ -1,2 +1,2 @@
-# emexpr
-Embedded Expression parser
+# EmExpr
+Expression evaluator for embedded systems
