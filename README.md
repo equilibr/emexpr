@@ -388,7 +388,7 @@ The operators `:`, `'` and `.` are not used by the grammar.
 |`!`|||Yes|
 |`~`|||Yes|
 |`,`|2|Left|No|
-|`|`|3|Left|Yes|
+|<code>&#124;</code>|3|Left|Yes|
 |`&`|4|Left|Yes|
 |`=`|5|Left|No|
 |`<`|5|Left|No|
