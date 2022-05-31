@@ -428,7 +428,7 @@ Since this is parser-only modification the execution speed and memory usage woul
 ### Sanity checks
 
 Add various sanity checks during parsing and evaluations.
-It must be possible to completely disabled them during compilation of the library.
+It must be possible to completely disable them during compilation of the library.
 
 ### Variables
 
