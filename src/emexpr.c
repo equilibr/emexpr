@@ -85,7 +85,6 @@ static inline int eei_lexer_is_operator(const char c)
 			|| (c == '+') || (c == '-') || (c == '*') || (c == '/')
 			|| (c == '%') ||(c == '^') || (c == '&') || (c == '|')
 			|| (c == '~') ||(c == '!')
-			|| (c == '*') ||(c == '/')
 			|| (c == '=') ||(c == '>') || (c == '<');
 }
 
@@ -355,24 +354,35 @@ static const eei_rule_description eei_parser_prefix_rules[] =
 	//Grouping parens
 	MAKE_DELIMITED_PREFIX_RULE(MAKE_TOKEN(eei_token_delimiter,'(')),
 
-	MAKE_DEFAULT_PREFIX_RULE(MAKE_TOKEN(eei_token_operator,'-')),
 	MAKE_DEFAULT_PREFIX_RULE(MAKE_TOKEN(eei_token_operator,'!')),
+	MAKE_DEFAULT_PREFIX_RULE(MAKE_TOKEN(eei_token_operator,'~')),
+	MAKE_DEFAULT_PREFIX_RULE(MAKE_TOKEN(eei_token_operator,'&')),
+	MAKE_DEFAULT_PREFIX_RULE(MAKE_TOKEN(eei_token_operator,'|')),
+	MAKE_DEFAULT_PREFIX_RULE(MAKE_TOKEN(eei_token_operator,'+')),
+	MAKE_DEFAULT_PREFIX_RULE(MAKE_TOKEN(eei_token_operator,'-')),
 
 	MAKE_SENTINEL_RULE()
 };
 
 static const eei_rule_description eei_parser_infix_rules[] =
 {
+	//Sequence delimiter
 	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_delimiter,','), 2),
 
 	//Function call
 	MAKE_DELIMITED_INFIX_RULE(MAKE_TOKEN(eei_token_delimiter,'('), 10),
 
-	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'+'), 4),
-	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'-'), 4),
-	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'*'), 5),
-	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'/'), 5),
-	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'%'), 5),
+	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'|'), 3),
+	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'&'), 4),
+	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'='), 5),
+	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'<'), 5),
+	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'>'), 5),
+	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'+'), 6),
+	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'-'), 6),
+	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'*'), 7),
+	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'/'), 7),
+	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'%'), 7),
+	MAKE_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'^'), 8, eei_rule_right, 0),
 
 	MAKE_SENTINEL_RULE()
 };

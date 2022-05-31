@@ -1,8 +1,45 @@
 # EmExpr
 
-*The following text is written in the present tense, even during development, to keep a reminder of the project goals.*
+EmExpr, the Embedded Expression library, is a small, zero-dependency, zero-allocation parser and evaluation engine for mathematical expressions. It is aimed to be used in embedded systems where resources are at a premium and must be tightly controlled.
 
-EmExpr is a small, zero-dependency, zero-allocation expression parser and evaluation engine for mathematical expressions. It is aimed to be used in embedded systems where resources are at a premium and must be tightly controlled.
+## Introduction
+
+*The introduction is shamelessly based on the readme from the [tinyexpr](https://github.com/codeplea/tinyexpr) library.*
+If you don't really care about call stack depth, dynamic allocations, memory footprint or execution speed go check that project. It might be better suited for your needs and simpler to use.
+
+### Features
+
+- Designed for low-resource embedded systems. 
+- Keeps the call stack as small as possible.
+- C99 with **no dependencies**. Not even `math.h` and `memory.h`.
+- Single source file and header file.
+- Simple and extremely fast.
+- Does **not** require usage of heap memory.
+- A parsed expression can be evaluated multiple times with no added overhead.
+- Implements the expected operators precedence by default.
+- Can add custom functions and variables easily.
+- Can work with **fixed-point** numbers without any modifications.
+- The parsed grammar and precedence can be easily modified.
+- Easy to use - the API has 2.5 functions in total.
+- Thread-safe - if your code is thread-safe.
+
+### Building
+
+The EmExpr core is self-contained in two files: `emexpr.c` and `emexpr.h`. To use EmExpr, simply add those two files to your project.
+
+### Short Example
+
+Here is a minimal example to evaluate an expression at runtime. Note that this requires adding two more files to your project, `ee_execute.c` and `ee_execute.h`.
+
+```C
+#include "eelib/ee_execute.h"
+double result = eelib_execute("sin(2 * PI)");
+```
+
+
+## Design philosophy
+
+*The following text is written in the present tense, even during development, to keep a reminder of the project goals.*
 
 It has no `#include` directives (other than its own header), not even `memory` nor `math`. This allows it to be used even in bare metal project where there is very limited runtime support and when precise control over memory and processor usage is needed. It can be used in places where there is no `malloc` available, for example, or when the mathematical library is not even implemented.
 
@@ -11,8 +48,6 @@ It is highly configurable, allowing to use any C built-in basic type as storage 
 The parsing and execution steps are separated allowing for the lowest possible resource usage and fastest possible reevaluation of parsed expressions. Variables, constants and functions are bound (not copied) during parsing so each evaluation uses the current data from memory.
 
 There is no shared mutable state in the code. Thus, if needed, it can be executed concurrently, given the referenced data and functions also support this.
-
-## Design philosophy
 
 ### Expression parser
 
@@ -118,8 +153,252 @@ For example, assume there are two expressions, that were parsed beforehand, that
 
 ## <a name="UserInterface"></a> User interface
 
+The user interface is composed from variables and functions. The variables are bound during parsing and their value can be used during evaluation. The functions are also bound during parsing and can be executed during evaluation by the evaluation engine.
+
+For the evaluation engine both variables and functions are represented using pointers and their names, both in the source code and in the expression, are irrelevant. Moreover, those names are not even stored in the evaluation environment by the parser.
+
+To conserve memory the parser only stores pointers to those variables and functions that are actually referenced in the expression. This allows for providing to the parser a list of all variables and functions that **might** be used by an expression, e.g. all mathematical functions, without the need to know in advance which of them will actually be used.
+
+Information about the variables and functions is provided to the parser using the `ee_compilation_data` structure. 
+
+### Variables
+
+Variables are provided to the parser using the `variables` field inside the `ee_compilation_data` structure.
+For each variable its' address and the name by which it will be known in the expression is provided.
+
+All bound variables must be of the same type: `ee_variable_type`. The value of the variables can be read at any time, in any order, by the execution engine. While inside a user function the execution engine is stopped and, thus, can not access any variables.
+
+Since no synchronization is used for variable access the user must make sure their value is always valid when the execution engine is running.
+
+Following is diluted example of how to bind two variables to the parser.
+```C
+  ee_variable_type var1, var2;
+  
+  ee_variable const varData[] = {&var1,  &var2};
+  const char * varNames[] = {"a", "b"};
+  ee_compilation_data bindings = { .variables = { varData, {varNames, 2} } };
+  
+  //Inside an expression variables are accessed directly by the bound name.
+  ee_compile("a + b", &environment, &bindings);
+  ```
+
+### Functions
+
+Functions are provided to the parser using the `functions` field inside the `ee_compilation_data` structure.
+For each function its' address, arity (number of accepted parameters) and the name by which it will be known in the expression is provided.
+
+All functions must be of the same type: `ee_function`. The functions can be called at any time, in any order, by the execution engine. Each function can accept zero or more parameters and returns a value, that is used in its place in the expression, and a result code.
+
+When execution is successful a code of zero should be returned. When the function wants to signal an error it should return some positive number. In this case the evaluation will be halted and the returned number will be propagated, as is, back to the caller of `ee_evaluate`.
+This can be used by the user code to handle various conditions and errors without the evaluation engine getting in the way.
+
+Since a single user function can be used to implement several operations and, also, since user function can be declared as variadic the actual number of parameters is passed to the user function on each invocation.
+
+Functions that accept zero parameters can be invoked using the variable access syntax, without the `()` parenthesis denoting a function call. This allow those functions to act as variables, allowing for things such as externally provided constants or dynamically generated values.
+
+For detailed explanation see the comment for the `ee_function` definition and the the `arity` field of the `ee_compilation_data_function` structure.
+
+Following is diluted example of how to use a single function to implement two operators.
+
+
+```C
+int subneg(int arity, const ee_variable actuals, ee_variable result)
+{
+  switch (arity)
+  {
+    case 1:
+      *result = -actuals[0];
+      return 0;
+    case 2:
+      *result = actuals[0] - actuals[1];
+      return 0;
+    default:
+      return 1;
+  }
+}
+
+  //Somewhere inside the parsing function...
+  
+  ee_compilation_data_function  funcData[]  =  {
+    {subneg,1},
+    {subneg,2}
+  };
+  const  char  *  funcNames[]  =  {"-","-"};
+
+  ee_compilation_data bindings = { .functions= { funcData, {funcNames, 2} } };
+  
+  ee_compile("-1 - 1", &environment, &bindings);
+```
+
+If a function is bound only once, using a non-negative arity, the runtime check for arity can be omitted since the parser makes sure the correct number of parameters is always provided upon invocation.
+
 ## Syntax
-This describes the default syntax. The syntax can be modified at any scale, from changing the precedence of a single operator to using completely different grammar.
+This describes the default syntax. The syntax can be modified at any scale, from changing the precedence of a single operator to using a completely different grammar.
+
+The syntax is exactly what might be expected inside an expression.
+
+- Various operators with the expected [precedence](#OperatorsTable).
+- Parenthesis are used for grouping sub-expressions and invoking functions.
+- Spaces are ignored.
+- Constants can be provided using scientific notation
+-  Postfix function are supported
+
+Here are some samples, where each line is a separate expression.
+```
+a * (b + c)
+2 + -f(g(), x)
+e^-1
+!a | b & c == d
+1.1e6 - f(100 K)
+```
+
+### Lexer
+
+At the first step the parser converts the expression into a stream of tokens and classifies them into five distinct classes:
+
+* Identifiers
+* Numbers
+* Delimiters
+* Operators
+* Spaces
+
+### Identifiers
+
+Identifiers are used to reference variables and functions. They must begin with an character in the range `a` to `z` or `A` to `Z`, or the `_` character. The rest of the identifier can include any of the above characters or a numeric character from `0` to `9`.
+
+### Numbers
+
+Numbers are used to provide constant values directly in the expression. They **must** begin with a numeric character in the range from `0` to `9` to be recognized as numbers. This can be, optionally, followed by `.` and another sequences of characters in the range from `0` to `9`. This, in turn, can be followed by the letter `e`, an optional `+` or `-` character and another sequence of characters in the range `0` to `9`.
+
+Any other character will terminate the number.
+
+### Delimiters
+
+Delimiters are used to, as implied, delimit certain language features.
+Delimiters are a character from this list: `,`, `(`, `)`, `[`, `]`, `{`, `}`.
+Each delimiter is always a single character. That is, `((` is two delimiters.
+
+### Operators
+
+Operators are used to, well, perform operations.
+Operators are a character from the list: `:`, `'`, `.`, `+`, `-`, `*`, `/`, `%`, `^`, `&`, `|`, `~`, `!`, `=`, `>`, `<`.
+Each operator is always a single character. That is, `--` are two operators.
+
+### Spaces
+Spaces are used to separate between tokens that would, otherwise, be parsed as a single token. *And also to make things pretty and readable.*
+
+The following characters, in C's escape sequence representation, are recognized as space: ` `, `\t`, `\r`.`\n`.
+
+Apart from being used to separate tokens spaces are completely ignored by the parser.
+
+****
+After the above step the expression, or rather the generated token stream, is parsed to understand its structure.
+
+The following text describes the default grammar. It can be completely modified, if needed, by changing the parser tables in the source code. No other modifications are necessary.
+
+Note that some delimiters are unused in the default grammar. Also note that **all** operators are implemented using user functions. The default implementation of the four basic operators `+-*/` is also done using user functions. They can be excluded from compilation in case custom functions for them are to be provided by the user.
+
+While the grammar defines many operators, using operators with no provided user function will result in a parser **error**.
+
+Most importantly, EmExpr imposes **no** semantic meaning to any operator (except the default implementation mentioned above, that can be disabled) and thus *any operator* can be used to mean *any operation*, as is seen fit by the user of the library.
+
+### Operators and precedence
+
+An expression is defined by its operators. All it really does is to apply certain operators to certain operands in a certain order.
+
+Operators come in three flavors (actually four, but we do not handle mix-fix operators): prefix, infix and postfix.
+As their names imply they differentiate by where their operands are located in relation to themselves in the expression.
+
+A prefix operator is located before its operand. A classical example of a prefix operator is the *negation*, e.g. `-x`.
+
+A postfix operator is located after its operand. The most known example of this being C's post-increment, `i++`.
+
+And, accordingly, an infix operator is located between its operands. An example of this can be the subtraction operator, `x - y`. Infix operators can have more than two operands, for example `a + b + c` can be treated as a single addition operator with three operands, but this is not handled as such by most parsers, this one not being an exception as well.
+
+It is said that operators bind to their operands. This can be thought of as writing parenthesis around each operator and its operands to unambiguously mark the evaluation order of each operator. Each flavor has its own rules for this binding when several operators are encountered in sequence.
+
+#### Prefix operators
+
+Prefix operators are usually said to bind to the right, that is whatever is to the right of them must be evaluated first. This means that a sequence of prefix operators are executed in reverse order from how they appear in the expression. Given the expression `!-x` the evaluation order is `x`, then `-` and, finally, `!`. Each prefix operator defines what operator flavor must come after it. While regular prefix operator expect another prefix operator after them, there are two exceptions, variable references and function calls. While the latter two are also considered prefix operators and can appear anywhere that is expected they, themselves, must **not** be followed by a prefix operator.
+
+#### Infix operators
+
+In contrast to prefix operators infix ones also have a property called precedence. This property determines, for a sequence of infix operators delimited by non-infix operators, the actual order of bindings. Thus, if `*` has higher precedence than `+` the expression `a + b * c` will be evaluated as it is was written `a + (b * c)`.
+
+Inside a sequence of operators with the same precedence infix operators can bind left or right. With left binding, the most used one, given the expression `a + b + c`the sub-expression `a + b` is evaluated first, as if it was written `(a + b) + c`. Right binding is usually used for operators such as `^`, mostly used to represent the power function, so that `a ^ b ^ c`is evaluated as `a ^ (b ^ c)`, preserving the order expected from regular mathematical notation using powers.
+
+Infix operators **must** always be surrounded by non-infix operators, so it is invalid to write an expression such as `a + + b`, if there is no prefix/postfix version of `+`.
+
+#### Postfix operators
+
+Postfix operator are a mixture between prefix and infix. They can be chained one after another like the prefix operators and they have a precedence that is also considered during parsing of infix operators. Postfix operators are always left binding, that is, they are executed in the order they appear in the expression.
+
+Postfix operators can be present when an infix operator is expected and must **not** be followed by a prefix operator.
+
+### Grouping
+
+It is beneficial to be able to override the operator precedence. The grouping parenthesis, `(` and `)`, are used for this. They can appear anywhere an infix operator is expected and their content will be evaluated as a complete sub-expression. Thus their content will not bind to the preceding or following operators.
+
+As an example the expression `a * (b + c)` will not bind `b` to `*` and, instead, first evaluate `b+c`, binding its result as the second operand of `*`.
+
+### Variable access
+
+To access a bound variable its name, as set in the parser `ee_compilation_data` structure should be provided.
+Variables can appear anywhere a prefix operator is expected.
+
+For example, given two bound variables named `x` and `y`, an expression that calculates their difference could be `x - y` or `x + -y` or `-(-x + y)`.
+
+### User functions
+
+To invoke a user function its name,  as set in the parser `ee_compilation_data` structure should be provided, followed by the `(` call operator, followed by zero or more, comma delimited expressions, concluding with `)`.
+Function invocations can appear anywhere a prefix operator is expected.
+
+Follows an example of invoking two functions, `f` and `g`, with different parameters: `f() + f(0) + f(g()) + f(1,2 * g())`.
+
+The `,` delimiter that is used to separate parameters is actually an operator with a priority lower than any other used operator.
+The number of parameters is determined during parsing and a user function with the correct arity must be provided, otherwise the parser will halt with an error.
+
+#### Functions as variables
+
+This is a special case that also invokes a user function.
+
+If a variable name that is not bound to any actual variable is used in an expression the parser will look for a function of the exact same name with an arity of 0 and use that instead. If both a variable and a zero arity function exist with the same name the parser will halt with an error.
+The normal function invocation syntax is always available and will **not** result in an error, even if a bound variable with the same name also exists.
+
+This allows to seamlessly harness user functions for dynamic variable lookup or value generation.
+This also allows to replace direct variable access for function based access without any modifications to existing expressions.
+
+For example, given a function named `x` which accepts zero parameters, it can be invoked in the following ways: `x() + x`.
+
+#### Functions as postfix operators
+
+When a postfix operator is exactly the name of a user function with an arity of 1 that function is used for the operator. The default grammar does not support any other postfix operators.
+
+For example, this form can be used for implementing SI multipliers.
+Given user functions such as `K`, `M`that take a single parameter and multiply it by the correct power of 10, the expression `1 M - 900 K' should evaluate to 100 * 10^3^.
+
+### <a name="OperatorsTable"></a>Defined operators
+
+There are many operators defined, some are used both as infix and prefix. They are referenced in the following table.
+The single, user function based, postfix operator is left binding with a precedence of 11.
+The operators `:`, `'` and `.` are not used by the grammar.
+
+|Operator|Infix precedence|Infix binding|Prefix|
+|--|--|--|--|
+|`!`|||Yes|
+|`~`|||Yes|
+|`,`|2|Left|No|
+|`|`|3|Left|Yes|
+|`&`|4|Left|Yes|
+|`=`|5|Left|No|
+|`<`|5|Left|No|
+|`>`|5|Left|No|
+|`+`|6|Left|Yes|
+|`-`|6|Left|Yes|
+|`*`|7|Left|No|
+|`/`|7|Left|No|
+|`%`|7|Left|No|
+|`^`|8|Right|No|
 
 ## Support code
 To simplify the general use case support code is provided, as additional sources, with bindings to functions from`math.h` and `cmath.h`, for several variable types.
@@ -130,9 +409,8 @@ For users who want to *just use* the library a function is provided that takes a
 
 ```C
     double myVar = 0;
-    double result = eelib_execute("cos(2 * PI * phi", "phi", &myVar);
+    double result = eelib_execute("cos(2 * PI * phi)", "phi", &myVar);
 ```
-
 
 ## Future
 
@@ -148,6 +426,10 @@ The requirement to not modify the engine means there will be no short-circuiting
 ### Variables
 
 Allow using user defined variable types. Currently only the behavior can be changed but the variable must be a C built-in.
+
+### Name lookup
+
+Allow using special user provided functions for variable and function name lookup during parsing instead of the data directly supplied in `ee_compilation_data`.
 
 ### Environment sharing
 
@@ -181,3 +463,9 @@ It will be simple to add writing to variables and parsing several expressions in
 It should be noted that this can, currently, be emulated by using user functions to perform the writes, as in `writeA(...expression...) + writeB(...expression...)`.
 
 Even if only a single expression is allowed writing to variables with a simple syntax can be beneficial for use cases such as dynamically provided user defined variable drivers, simple configuration scripts where each line is treated as an expression, etc...
+
+## Notes
+
+This project came to life after an attempt to remove `malloc` from the [tinyexpr](https://github.com/codeplea/tinyexpr) library. It was soon realized this would require a massive change and would actually defeat the purpose of that project. As a result the only thing shared with that library is the *expr* in the name.
+
+The code for the Pratt parser is a rewrite in C of the same algorithm implemented in C++ in one of my other projects.

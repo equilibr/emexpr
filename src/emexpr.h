@@ -34,7 +34,7 @@ typedef struct
 	//The function itself.
 	//This can be NULL when used to signal the end of a function array.
 	//It is assumed all functions are pure (have no visible side effets).
-	ee_function * function;
+	ee_function function;
 
 	//The count of parameters accepted by this function.
 	//Arity can be zero.
@@ -56,13 +56,29 @@ typedef struct
 
 } ee_compilation_data_function;
 
-//Used to provide meta-data for ee_compilation_data.
+//This structure provides meta-data for ee_compilation_data variables and functions.
 //See its comment for explanations.
 typedef struct
 {
 	const char * const * names;
 	int count;
 } ee_compilation_data_meta;
+
+//This structure provides complete variables data for ee_compilation_data.
+//See its comment for explanations.
+typedef struct
+{
+	ee_variable const * data;
+	ee_compilation_data_meta meta;
+} ee_compilation_data_variables;
+
+//This structure provides complete functions data for ee_compilation_data.
+//See its comment for explanations.
+typedef struct
+{
+	ee_compilation_data_function * data;
+	ee_compilation_data_meta meta;
+} ee_compilation_data_functions;
 
 //This structure is used to supply external hooks to emexpr.
 //The referenced variables and functions must remain at the given addresses
@@ -72,20 +88,20 @@ typedef struct
 //Both variables and functions use the same mechanism for providing the
 //	hooks, their names and determining their count.
 //
-//The variables/functions::function members - the data member:
+//The variables/functions::data members - the data member:
 //	An array of pointers to the variables or function desctiptions;
 //	Can be NULL is there are no elements at all.
 //	The last element of the array can, optionally, itself be null.
 //	For functions the function member is the one to NULL-ify since
 //		an arity if zero is, in itself, valid.
 //
-//The ee_compilation_data_meta::names members - the names member:
+//The variables/functions::meta::names members - the names member:
 //	An array of names accosiated with the elements from the data member, in order.
 //	Must have the same number of elements as the data member.
 //	Ignored if the data member is NULL and must be valid otherwise.
 //	The last element of the array can, optionally, itself be null.
 //
-//The ee_compilation_data_meta::count members - the count member:
+//The variables/functions::meta::count members - the count member:
 //	Holds the number of elements in the previous members.
 //	Can be zero if any of the above arrays is NULL terminated and
 //		MUST be non-zero if both the above arrays are not NULL-terminated.
@@ -97,11 +113,8 @@ typedef struct
 //		reaches the number supplied in the count member (if non zero) - the count is terminated.
 typedef struct
 {
-	ee_variable * variables;
-	ee_compilation_data_meta variables_meta;
-
-	ee_compilation_data_function * functions;
-	ee_compilation_data_meta functions_meta;
+	ee_compilation_data_variables variables;
+	ee_compilation_data_functions functions;
 } ee_compilation_data;
 
 
