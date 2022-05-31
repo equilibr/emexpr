@@ -1,4 +1,5 @@
 
+
 # EmExpr
 
 EmExpr, the Embedded Expression library, is a small, zero-dependency, zero-allocation parser and evaluation engine for mathematical expressions. It is aimed to be used in embedded systems where resources are at a premium and must be tightly controlled.
@@ -440,24 +441,44 @@ Allow using user defined variable types. Currently only the behavior can be chan
 
 Allow using special user provided functions for variable and function name lookup during parsing instead of the data directly supplied in `ee_compilation_data`.
 
+### Parser scratch space
+
+As currently defined the parser is using the evaluation environment as its scratch space.
+
+Allow for separating the two memory locations, same as can be done for the runtime stack. This would allow using some global scratch buffer, that is generally available in embedded systems, for the parser while keeping the evaluation environment size to an absolute minimum.
+
 ### Environment sharing
 
 Allow sharing of the evaluation environment for different expressions.
 This can be done by allowing the parser to append data to an existing environment. It can be used to conserve memory when many expressions share the same set of constants, variables and functions.
 
+### Constant indexing
+
+Remove the separate constants index command and treat them as variables. That is, store a pointer to them inside the variables table, or use any other method for accessing variables.
+
+This would remove a single VM command. This can be useful to reduce the number of bits using for encoding commands. The downside is some added complexity in the parser and, possible, much higher memory usage.
+
 ### Direct data
 
-Remove usage of constant/variable/function tables and provided the data directly in the byte code stream.
+Remove usage of constant/variable/function tables and provide the data/pointers directly in the byte code stream.
 
-This can make the environment sharing redundant and simplify the implementation of the evaluation engine even further. On the other hand this can make execution slower and actually use more memory, especially when the same identifiers are used multiple times in an expression or across different expressions thus negating any possible gains. 
+This can make the environment sharing redundant and simplify the implementation of the evaluation engine even further. On the other hand this can make execution slower and actually use more memory, especially when the same identifiers are used multiple times in an expression or across different expressions thus negating any possible gains.
+
+### Offset tables
+
+Remove usage of variable/function tables, store a base pointer for each, and provide offsets in the byte code.
+
+This should combine most of the benefits of the direct data approach while keeping the byte code bloat to a minimum, given the process memory space is small enough.
 
 ### Optimizations
 
 Any optimization performed should only be done in the parser and must not add any complexity to the execution engine.
-It must be possible for the user to disable this, not only to keep the parser resource usage to a minimum but also because of system limitations, such as the inability to execute user provided functions during parsing.
 
 This can include things such as common sub-expression elimination and constant folding.
-This can also try and automatically estimate if the direct data approach, as outlined above, should be used on a per-case basis.
+This can also try and automatically estimate if the direct data or offset tables approach, as outlined above, should be used on a per-case basis, if enabled.
+
+Allow for compile-time control over what optimization features should and could be used.
+This is not only to keep the parser resource usage to a minimum but also to facilitate system limitations, such as the inability to execute user provided functions during parsing.
 
 ### Source separation
 
