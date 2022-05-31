@@ -43,13 +43,95 @@ All data processing - operators, function calls, custom constant and special var
 
 The engine handles only a single, user defined, type of value. All variables, constants, function parameters and return data, as well as the execution stack itself are of this type. The engine does not care about the actual type, only that it can be copied using the `=` (C assignment) operator, stored in memory and a pointer to it can be taken and de-referenced.  User functions are the only ones that should actually care what this type is since they are the ones who perform operations on it.
 
+## Usage
+
+To obtain the result of evaluating an expression two steps must be performed: parsing and evaluating.
+
+The first step, parsing, analyzes the expression and any additionally user provided data and prepares an evaluation environment. This environment is then used in the second step, evaluation, to actually generate the result.
+
+### Size estimation
+
+Since there is no way to know in advance, before parsing, how much space will be needed for the evaluation environment, an estimator function can be called. This function is given the actual expression and it fills the environment header with size estimation data.
+This would look like this:
+
+```C
+    ee_environment_header header;
+    if (ee_guestimate("40+2",&header))
+        return;//There was some error
+```
+
+At this point an adequately sized buffer can be allocated.
+It is entirely possible to just allocate some space and reject all expressions that require more that.
+
+### Parsing
+
+No matter the strategy, the next step is performing the actual parsing.
+For the example we assume the buffer is pre-allocated to some constant value.
+
+```C
+  enum {EnvironmentSize = 64};
+  union
+  {
+     ee_environment_header  header;
+     ee_environment_element data[EnvironmentSize];
+  }  environment;
+  environment.header.size = EnvironmentSize;
+  
+  ee_compilation_data data;
+  const char * expression = "40+2";
+  
+  int result = ee_compile(expression , &environment.header,  &data);
+  if (result)
+    //This can be used to display a specific error message
+    return result;
+```
+One very important piece of code is left unexplained, the `ee_compilation_data`. It is extensively discussed as part of the [user interface](#UserInterface).
+
+### Evaluation
+
+If the parsing completed without errors the expression can be evaluated. 
+Note that, at this point, the only piece of data that we need to keep is the evaluation environment, `environment`. All the other data used before, as well as the expression itself, are no longer needed.
+
+```C
+  //We assume the result of the evaluation is of some interest.
+  ee_variable_type result;
+  
+  int evaluated = ee_evaluate(&environment.header, &result);
+  if (evaluated)
+    //This can be provided by a user function during evaluation
+    return evaluated;
+```
+
+This step can be execute as many times as needed, interleaved with other execution.
+
+For example, assume there are two expressions, that were parsed beforehand, that are only needed for the side-effects of the user functions they execute. Code like the following could be used to execute them, repeatedly, until one of the user functions returns some non-zero value.
+
+```C
+  static const char * expr1 = "foo()";
+  static const char * expr1 = "bar()";
+
+  //Parsing was done here into env1 & env2
+  
+  ee_variable_type dummy;
+  while (!ee_evaluate(&env1, &dummy) && ee_evaluate(&env2, &dummy)) ;
+```
+
+## <a name="UserInterface"></a> User interface
+
+## Syntax
+This describes the default syntax. The syntax can be modified at any scale, from changing the precedence of a single operator to using completely different grammar.
 
 ## Support code
 To simplify the general use case support code is provided, as additional sources, with bindings to functions from`math.h` and `cmath.h`, for several variable types.
 
 To allow for more informative feedback to the user who parses expressions conversion functions, from the parser error codes to user readable strings, is provided. This can be used in systems where textual user feedback is possible to help with writing correct expressions. This is also provided as an additional source file that can be used only by those who need such a facility.
 
-For users who want to *just use* the library a function is provided that takes an expression as input and returns the result as output, with a simplified API.
+For users who want to *just use* the library a function is provided that takes an expression as input and returns the result as output. This function has a simplified API for variable binding and it includes the default math functions in the evaluation.
+
+```C
+    double myVar = 0;
+    double result = eelib_execute("cos(2 * PI * phi", "phi", &myVar);
+```
 
 
 ## Future
