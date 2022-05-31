@@ -841,8 +841,7 @@ int ee_evaluate(ee_environment environment, ee_variable result)
 	error = eei_vm_execute(&vm_environment);
 
 	//Extract the top of the stack and return it as the result
-	if (result)
-		*result = *vm_environment.stack;
+	*result = *vm_environment.stack;
 
 	return error;
 }

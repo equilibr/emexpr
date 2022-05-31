@@ -1,3 +1,4 @@
+
 # EmExpr
 
 EmExpr, the Embedded Expression library, is a small, zero-dependency, zero-allocation parser and evaluation engine for mathematical expressions. It is aimed to be used in embedded systems where resources are at a premium and must be tightly controlled.
@@ -39,7 +40,7 @@ double result = eelib_execute("sin(2 * PI)");
 
 ## Design philosophy
 
-*The following text is written in the present tense, even during development, to keep a reminder of the project goals.*
+*The following text is written in the present tense, even during development, to be kept as a reminder of the project goals.*
 
 It has no `#include` directives (other than its own header), not even `memory` nor `math`. This allows it to be used even in bare metal project where there is very limited runtime support and when precise control over memory and processor usage is needed. It can be used in places where there is no `malloc` available, for example, or when the mathematical library is not even implemented.
 
@@ -48,6 +49,8 @@ It is highly configurable, allowing to use any C built-in basic type as storage 
 The parsing and execution steps are separated allowing for the lowest possible resource usage and fastest possible reevaluation of parsed expressions. Variables, constants and functions are bound (not copied) during parsing so each evaluation uses the current data from memory.
 
 There is no shared mutable state in the code. Thus, if needed, it can be executed concurrently, given the referenced data and functions also support this.
+
+There are no sanity checks anywhere in the code. It is assumed the provided data is always valid. The validity of the expression depends only on its buffer being allocated, not on its content matching the parsed grammar.
 
 ### Expression parser
 
@@ -414,14 +417,18 @@ For users who want to *just use* the library a function is provided that takes a
 
 ## Future
 
-This is a list of things to consider after the project is in a working state.
+This is a list of things to consider after the project is in a working state, in no particular order.
 
-### Logic
+### Digraph and trigraph operators
 
-Add comparison operations and boolean operators.
-This should be implemented with the used variable type and without any modification to the execution engine.
-This can, basically, be done by simply adding new operators to the parser table and providing the relevant support functions.
-The requirement to not modify the engine means there will be no short-circuiting support since that would need the ability to control the execution flow.
+Add support for operators consisting of two or three characters.
+This would allow to greatly increase the usable operators syntax.
+Since this is parser-only modification the execution speed and memory usage would stay unchanged.
+
+### Sanity checks
+
+Add various sanity checks during parsing and evaluations.
+It must be possible to completely disabled them during compilation of the library.
 
 ### Variables
 
@@ -451,6 +458,7 @@ This can include things such as common sub-expression elimination and constant f
 This can also try and automatically estimate if the direct data approach, as outlined above, should be used on a per-case basis.
 
 ### Source separation
+
 Separate the parser and execution engine to different source files to simplify applying different optimization techniques to each, e.g. `-Os` for the parser and `-O3` for the execution engine.
 
 ### Beyond expressions
@@ -468,4 +476,4 @@ Even if only a single expression is allowed writing to variables with a simple s
 
 This project came to life after an attempt to remove `malloc` from the [tinyexpr](https://github.com/codeplea/tinyexpr) library. It was soon realized this would require a massive change and would actually defeat the purpose of that project. As a result the only thing shared with that library is the *expr* in the name.
 
-The code for the Pratt parser is a rewrite in C of the same algorithm implemented in C++ in one of my other projects.
+The code for the Pratt parser is a rewrite in C of the same algorithm implemented in C++ from one of my other projects.
