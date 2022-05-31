@@ -99,7 +99,7 @@ This would look like this:
 ```
 
 At this point an adequately sized buffer can be allocated.
-It is entirely possible to just allocate some space and reject all expressions that require more that.
+It is entirely possible to just allocate some space and reject all expressions that require more than that.
 
 ### Parsing
 
@@ -140,7 +140,7 @@ Note that, at this point, the only piece of data that we need to keep is the eva
     return evaluated;
 ```
 
-This step can be execute as many times as needed, interleaved with other execution.
+This step can be executed as many times as needed, interleaved with other executions.
 
 For example, assume there are two expressions, that were parsed beforehand, that are only needed for the side-effects of the user functions they execute. Code like the following could be used to execute them, repeatedly, until one of the user functions returns some non-zero value.
 
@@ -151,7 +151,7 @@ For example, assume there are two expressions, that were parsed beforehand, that
   //Parsing was done here into env1 & env2
   
   ee_variable_type dummy;
-  while (!ee_evaluate(&env1, &dummy) && ee_evaluate(&env2, &dummy)) ;
+  while (!ee_evaluate(&env1, &dummy) && !ee_evaluate(&env2, &dummy)) ;
 ```
 
 ## <a name="UserInterface"></a> User interface
@@ -169,11 +169,11 @@ Information about the variables and functions is provided to the parser using th
 Variables are provided to the parser using the `variables` field inside the `ee_compilation_data` structure.
 For each variable its' address and the name by which it will be known in the expression is provided.
 
-All bound variables must be of the same type: `ee_variable_type`. The value of the variables can be read at any time, in any order, by the execution engine. While inside a user function the execution engine is stopped and, thus, can not access any variables.
+All bound variables must be of the same type, `ee_variable_type`. The value of the variables can be read at any time, in any order, by the execution engine. While inside a user function the execution engine is stopped and, thus, will not access any variables.
 
 Since no synchronization is used for variable access the user must make sure their value is always valid when the execution engine is running.
 
-Following is diluted example of how to bind two variables to the parser.
+Following is a diluted example of how to bind two variables to the parser.
 ```C
   ee_variable_type var1, var2;
   
@@ -190,18 +190,18 @@ Following is diluted example of how to bind two variables to the parser.
 Functions are provided to the parser using the `functions` field inside the `ee_compilation_data` structure.
 For each function its' address, arity (number of accepted parameters) and the name by which it will be known in the expression is provided.
 
-All functions must be of the same type: `ee_function`. The functions can be called at any time, in any order, by the execution engine. Each function can accept zero or more parameters and returns a value, that is used in its place in the expression, and a result code.
+All functions must be of the same type, `ee_function`. The functions can be called at any time, in any order, by the execution engine. Each function can accept zero or more parameters and returns a value, that is used in its place in the expression, and a result code.
 
 When execution is successful a code of zero should be returned. When the function wants to signal an error it should return some positive number. In this case the evaluation will be halted and the returned number will be propagated, as is, back to the caller of `ee_evaluate`.
 This can be used by the user code to handle various conditions and errors without the evaluation engine getting in the way.
 
-Since a single user function can be used to implement several operations and, also, since user function can be declared as variadic the actual number of parameters is passed to the user function on each invocation.
+Since a single user function can be used to implement several operations and, also, since user function can be declared as variadic, the actual number of parameters is passed to the user function on each invocation.
 
-Functions that accept zero parameters can be invoked using the variable access syntax, without the `()` parenthesis denoting a function call. This allow those functions to act as variables, allowing for things such as externally provided constants or dynamically generated values.
+Functions that accept zero parameters can be invoked using the variable access syntax, without the `()` parenthesis denoting a function call. This allows those functions to act as variables, letting for things such as externally provided constants or dynamically generated values.
 
 For detailed explanation see the comment for the `ee_function` definition and the the `arity` field of the `ee_compilation_data_function` structure.
 
-Following is diluted example of how to use a single function to implement two operators.
+Following is a diluted example of how to use a single function to implement two operators.
 
 
 ```C
@@ -243,8 +243,8 @@ The syntax is exactly what might be expected inside an expression.
 - Various operators with the expected [precedence](#OperatorsTable).
 - Parenthesis are used for grouping sub-expressions and invoking functions.
 - Spaces are ignored.
-- Constants can be provided using scientific notation
--  Postfix function are supported
+- Constants can be provided using scientific notation.
+- Postfix functions are supported.
 
 Here are some samples, where each line is a separate expression.
 ```
@@ -290,7 +290,7 @@ Each operator is always a single character. That is, `--` are two operators.
 ### Spaces
 Spaces are used to separate between tokens that would, otherwise, be parsed as a single token. *And also to make things pretty and readable.*
 
-The following characters, in C's escape sequence representation, are recognized as space: ` `, `\t`, `\r`.`\n`.
+The following characters, in C's escape sequence representation, are recognized as space: ` `, `\t`, `\r`, `\n`.
 
 Apart from being used to separate tokens spaces are completely ignored by the parser.
 
@@ -301,7 +301,7 @@ The following text describes the default grammar. It can be completely modified,
 
 Note that some delimiters are unused in the default grammar. Also note that **all** operators are implemented using user functions. The default implementation of the four basic operators `+-*/` is also done using user functions. They can be excluded from compilation in case custom functions for them are to be provided by the user.
 
-While the grammar defines many operators, using operators with no provided user function will result in a parser **error**.
+While the grammar defines many operators actually **using** an operator inside an expression with no provided user function to implement it will result in a parser **error**.
 
 Most importantly, EmExpr imposes **no** semantic meaning to any operator (except the default implementation mentioned above, that can be disabled) and thus *any operator* can be used to mean *any operation*, as is seen fit by the user of the library.
 
@@ -326,11 +326,11 @@ Prefix operators are usually said to bind to the right, that is whatever is to t
 
 #### Infix operators
 
-In contrast to prefix operators infix ones also have a property called precedence. This property determines, for a sequence of infix operators delimited by non-infix operators, the actual order of bindings. Thus, if `*` has higher precedence than `+` the expression `a + b * c` will be evaluated as it is was written `a + (b * c)`.
+In contrast to prefix operators infix ones also have a property called precedence. This property determines, for a sequence of infix operators delimited by non-infix operators, the actual order of bindings. Thus, if `*` has higher precedence than `+` the expression `a + b * c` will be evaluated as if it was written as `a + (b * c)`.
 
-Inside a sequence of operators with the same precedence infix operators can bind left or right. With left binding, the most used one, given the expression `a + b + c`the sub-expression `a + b` is evaluated first, as if it was written `(a + b) + c`. Right binding is usually used for operators such as `^`, mostly used to represent the power function, so that `a ^ b ^ c`is evaluated as `a ^ (b ^ c)`, preserving the order expected from regular mathematical notation using powers.
+Inside a sequence of operators with the same precedence infix operators can bind left or right. With left binding, the most used one, given the expression `a + b + c` the sub-expression `a + b` is evaluated first, as if it was written `(a + b) + c`. Right binding is usually used for operators such as `^`, mostly used to represent the power function, so that `a ^ b ^ c`is evaluated as `a ^ (b ^ c)`, preserving the order expected from regular mathematical notation using powers.
 
-Infix operators **must** always be surrounded by non-infix operators, so it is invalid to write an expression such as `a + + b`, if there is no prefix/postfix version of `+`.
+Infix operators **must** always be surrounded by non-infix operators, so it is invalid to write an expression such as `a / / b`, if there is no prefix/postfix version of `/`.
 
 #### Postfix operators
 
@@ -342,7 +342,7 @@ Postfix operators can be present when an infix operator is expected and must **n
 
 It is beneficial to be able to override the operator precedence. The grouping parenthesis, `(` and `)`, are used for this. They can appear anywhere an infix operator is expected and their content will be evaluated as a complete sub-expression. Thus their content will not bind to the preceding or following operators.
 
-As an example the expression `a * (b + c)` will not bind `b` to `*` and, instead, first evaluate `b+c`, binding its result as the second operand of `*`.
+As an example the expression `a * (b + c)` will not bind `b` to `*` and, instead, first evaluate `b + c`, binding its result as the second operand of `*`.
 
 ### Variable access
 
@@ -356,7 +356,7 @@ For example, given two bound variables named `x` and `y`, an expression that cal
 To invoke a user function its name,  as set in the parser `ee_compilation_data` structure should be provided, followed by the `(` call operator, followed by zero or more, comma delimited expressions, concluding with `)`.
 Function invocations can appear anywhere a prefix operator is expected.
 
-Follows an example of invoking two functions, `f` and `g`, with different parameters: `f() + f(0) + f(g()) + f(1,2 * g())`.
+Follows an example of invoking two functions, `f` and `g`, with different parameters: `f() + f(0) + f(g()) + f(1, 2 * g())`.
 
 The `,` delimiter that is used to separate parameters is actually an operator with a priority lower than any other used operator.
 The number of parameters is determined during parsing and a user function with the correct arity must be provided, otherwise the parser will halt with an error.
@@ -378,13 +378,15 @@ For example, given a function named `x` which accepts zero parameters, it can be
 When a postfix operator is exactly the name of a user function with an arity of 1 that function is used for the operator. The default grammar does not support any other postfix operators.
 
 For example, this form can be used for implementing SI multipliers.
-Given user functions such as `K`, `M`that take a single parameter and multiply it by the correct power of 10, the expression `1 M - 900 K' should evaluate to 100 * 10^3^.
+Given user functions such as `K` and `M` that take a single parameter and multiply it by the correct power of 10, the expression `1 M - 900 K' should evaluate to 100,000.
 
 ### <a name="OperatorsTable"></a>Defined operators
 
 There are many operators defined, some are used both as infix and prefix. They are referenced in the following table.
+
 The single, user function based, postfix operator is left binding with a precedence of 11.
-The operators `:`, `'` and `.` are not used by the grammar.
+
+The operators `:`, `'` and `.` are not used by the default grammar.
 
 |Operator|Infix precedence|Infix binding|Prefix|
 |--|--|--|--|
@@ -406,7 +408,7 @@ The operators `:`, `'` and `.` are not used by the grammar.
 ## Support code
 To simplify the general use case support code is provided, as additional sources, with bindings to functions from`math.h` and `cmath.h`, for several variable types.
 
-To allow for more informative feedback to the user who parses expressions conversion functions, from the parser error codes to user readable strings, is provided. This can be used in systems where textual user feedback is possible to help with writing correct expressions. This is also provided as an additional source file that can be used only by those who need such a facility.
+To allow for more informative feedback to the user who parses expressions, conversion functions, from the parser error codes to user readable strings, are provided. This can be used in systems where textual user feedback is possible to help with writing correct expressions. This is also provided as an additional source file that can be used only by those who need such a facility.
 
 For users who want to *just use* the library a function is provided that takes an expression as input and returns the result as output. This function has a simplified API for variable binding and it includes the default math functions in the evaluation.
 
@@ -441,7 +443,7 @@ Allow using special user provided functions for variable and function name looku
 ### Environment sharing
 
 Allow sharing of the evaluation environment for different expressions.
-This can be done by allowing the parser to append data to an existing environment. It can be used to conserve memory when many expression share the same set of constants, variables and functions.
+This can be done by allowing the parser to append data to an existing environment. It can be used to conserve memory when many expressions share the same set of constants, variables and functions.
 
 ### Direct data
 
@@ -452,7 +454,7 @@ This can make the environment sharing redundant and simplify the implementation 
 ### Optimizations
 
 Any optimization performed should only be done in the parser and must not add any complexity to the execution engine.
-It must be possible for the user to disable this. Not only to keep the parser resource usage to a minimum but also because of system limitations, such as the inability to execute user provided functions during parsing.
+It must be possible for the user to disable this, not only to keep the parser resource usage to a minimum but also because of system limitations, such as the inability to execute user provided functions during parsing.
 
 This can include things such as common sub-expression elimination and constant folding.
 This can also try and automatically estimate if the direct data approach, as outlined above, should be used on a per-case basis.
@@ -470,7 +472,7 @@ It will be simple to add writing to variables and parsing several expressions in
 
 It should be noted that this can, currently, be emulated by using user functions to perform the writes, as in `writeA(...expression...) + writeB(...expression...)`.
 
-Even if only a single expression is allowed writing to variables with a simple syntax can be beneficial for use cases such as dynamically provided user defined variable drivers, simple configuration scripts where each line is treated as an expression, etc...
+Even if only a single expression is allowed, writing to variables with a simple syntax can be beneficial for use cases such as dynamically provided user defined variable drivers, simple configuration scripts where each line is treated as an expression, etc...
 
 ## Notes
 
