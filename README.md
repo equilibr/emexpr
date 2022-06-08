@@ -447,6 +447,12 @@ As currently defined the parser is using the evaluation environment as its scrat
 
 Allow for separating the two memory locations, same as can be done for the runtime stack. This would allow using some global scratch buffer, that is generally available in embedded systems, for the parser while keeping the evaluation environment size to an absolute minimum.
 
+### Pre-process parser data
+
+Since the data supplied to the parser, the variables and user functions list, rarely, if never, changes between calls to the parser it would be highly beneficial to perform some pre-processing on this data to convert it to a format better suited for how the parser would operate on it.
+
+While this can somewhat increase the memory usage needed for parsing expressions it can greatly reduce the processing complexity for each parse cycle.
+
 ### Environment sharing
 
 Allow sharing of the evaluation environment for different expressions.
