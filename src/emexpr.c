@@ -251,6 +251,17 @@ typedef unsigned short int eei_rule;
 //	Next - the rule type to expected next
 typedef unsigned int eei_rule_description;
 
+typedef void (*eei_rule_handler)(void);
+
+//A rule table item to hold rules and their handler functions
+typedef struct
+{
+	//Rule description
+	eei_rule_description rule;
+
+	//Handler function for the rule
+	eei_rule_handler handler;
+} eei_rule_item;
 
 //Field sizes of the various parts for the token, rule & rule description
 enum
@@ -417,6 +428,11 @@ enum
 //Make a special rule that marks parsing groups
 #define MAKE_GROUP_RULE() MAKE_DELIMITED_INFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_group),0)
 
+//Create a rule than only represents state
+#define STATE(rule) {rule, (eei_rule_handler)0}
+
+//Create a rule with a handler
+#define HANDLE(rule, handler) {rule, handler}
 
 //Parser rule tables
 //------------------
@@ -435,55 +451,55 @@ enum
 	eei_precedence_postfix = 11,
 };
 
-static const eei_rule_description eei_parser_prefix_rules[] =
+static const eei_rule_item eei_parser_prefix_rules[] =
 {
 	//Expression start
-	MAKE_DELIMITED_PREFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_sof)),
+	STATE(MAKE_DELIMITED_PREFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_sof))),
 
-	MAKE_PREFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_number),0,eei_rule_infix),
-	MAKE_PREFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_identifier),0,eei_rule_infix),
+	STATE(MAKE_PREFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_number),0,eei_rule_infix)),
+	STATE(MAKE_PREFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_identifier),0,eei_rule_infix)),
 
 	//Grouping parens
-	MAKE_DELIMITED_PREFIX_RULE(MAKE_TOKEN(eei_token_delimiter,'(')),
+	STATE(MAKE_DELIMITED_PREFIX_RULE(MAKE_TOKEN(eei_token_delimiter,'('))),
 
-	MAKE_DEFAULT_PREFIX_RULE(MAKE_TOKEN(eei_token_operator,'!')),
-	MAKE_DEFAULT_PREFIX_RULE(MAKE_TOKEN(eei_token_operator,'~')),
-	MAKE_DEFAULT_PREFIX_RULE(MAKE_TOKEN(eei_token_operator,'&')),
-	MAKE_DEFAULT_PREFIX_RULE(MAKE_TOKEN(eei_token_operator,'|')),
-	MAKE_DEFAULT_PREFIX_RULE(MAKE_TOKEN(eei_token_operator,'+')),
-	MAKE_DEFAULT_PREFIX_RULE(MAKE_TOKEN(eei_token_operator,'-')),
+	STATE(MAKE_DEFAULT_PREFIX_RULE(MAKE_TOKEN(eei_token_operator,'!'))),
+	STATE(MAKE_DEFAULT_PREFIX_RULE(MAKE_TOKEN(eei_token_operator,'~'))),
+	STATE(MAKE_DEFAULT_PREFIX_RULE(MAKE_TOKEN(eei_token_operator,'&'))),
+	STATE(MAKE_DEFAULT_PREFIX_RULE(MAKE_TOKEN(eei_token_operator,'|'))),
+	STATE(MAKE_DEFAULT_PREFIX_RULE(MAKE_TOKEN(eei_token_operator,'+'))),
+	STATE(MAKE_DEFAULT_PREFIX_RULE(MAKE_TOKEN(eei_token_operator,'-'))),
 
-	MAKE_SENTINEL_RULE()
+	STATE(MAKE_SENTINEL_RULE())
 };
 
-static const eei_rule_description eei_parser_infix_rules[] =
+static const eei_rule_item eei_parser_infix_rules[] =
 {
 	//Sequence delimiter
-	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_delimiter,','), eei_precedence_comma),
+	STATE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_delimiter,','), eei_precedence_comma)),
 
 	//Function call
-	MAKE_DELIMITED_INFIX_RULE(MAKE_TOKEN(eei_token_delimiter,'('), eei_precedence_function),
+	STATE(MAKE_DELIMITED_INFIX_RULE(MAKE_TOKEN(eei_token_delimiter,'('), eei_precedence_function)),
 
-	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'|'), eei_precedence_logical_or),
-	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'&'), eei_precedence_logical_and),
-	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'='), eei_precedence_compare),
-	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'<'), eei_precedence_compare),
-	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'>'), eei_precedence_compare),
-	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'+'), eei_precedence_power1),
-	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'-'), eei_precedence_power1),
-	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'*'), eei_precedence_power2),
-	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'/'), eei_precedence_power2),
-	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'%'), eei_precedence_power2),
-	MAKE_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'^'), eei_precedence_power3, eei_rule_right, 0),
+	STATE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'|'), eei_precedence_logical_or)),
+	STATE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'&'), eei_precedence_logical_and)),
+	STATE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'='), eei_precedence_compare)),
+	STATE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'<'), eei_precedence_compare)),
+	STATE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'>'), eei_precedence_compare)),
+	STATE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'+'), eei_precedence_power1)),
+	STATE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'-'), eei_precedence_power1)),
+	STATE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'*'), eei_precedence_power2)),
+	STATE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'/'), eei_precedence_power2)),
+	STATE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'%'), eei_precedence_power2)),
+	STATE(MAKE_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'^'), eei_precedence_power3, eei_rule_right, 0)),
 
-	MAKE_SENTINEL_RULE()
+	STATE(MAKE_SENTINEL_RULE())
 };
 
-static const eei_rule_description eei_parser_postfix_rules[] =
+static const eei_rule_item eei_parser_postfix_rules[] =
 {
-	MAKE_POSTFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_identifier), eei_precedence_postfix),
+	STATE(MAKE_POSTFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_identifier), eei_precedence_postfix)),
 
-	MAKE_SENTINEL_RULE()
+	STATE(MAKE_SENTINEL_RULE())
 };
 
 static const eei_rule_description eei_parser_end_rules[][2] =
@@ -509,13 +525,17 @@ static const eei_rule_description eei_parser_end_rules[][2] =
 	{MAKE_SENTINEL_RULE(),MAKE_SENTINEL_END_RULE()}
 };
 
+//A sentinel rule description to use as a return value when needed
+static const eei_rule_item eei_parser_sentinel_rule = STATE(MAKE_SENTINEL_RULE());
 
-eei_rule_description eei_find_rule(eei_token token, eei_rule_type expected)
+
+
+const eei_rule_item * eei_find_rule(eei_token token, eei_rule_type expected)
 {
 	//Find the rule of the expected type matching the given token
 	//Will return the sentinel rule on failure
 
-	const eei_rule_description * table;
+	const eei_rule_item * table;
 
 	switch (expected)
 	{
@@ -533,19 +553,19 @@ eei_rule_description eei_find_rule(eei_token token, eei_rule_type expected)
 
 		case eei_rule_end:
 			//The end rules tables can not be searched using this function
-			return MAKE_SENTINEL_RULE();
+			return &eei_parser_sentinel_rule;
 	}
 
 	//Use a simple linear search since the tables are small and the
 	// overhead of a binary search is not worth it
-	while (*table != MAKE_SENTINEL_RULE())
+	while (table->rule != MAKE_SENTINEL_RULE())
 	{
-		if (token == GET_TOKEN(*table))
+		if (token == GET_TOKEN(table->rule))
 			break;
 		table++;
 	}
 
-	return *table;
+	return table;
 }
 
 eei_rule_description eei_find_end_rule(eei_token token, eei_rule_description rule)
