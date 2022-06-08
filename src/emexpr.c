@@ -862,10 +862,10 @@ typedef struct
 {
 	eei_parser_stack stack;
 	const ee_compilation_data * data;
-	eei_token_type current_token;
+	eei_token current_token;
 } eei_parser;
 
-int eei_parse_token(eei_parser * parser, eei_token token)
+int eei_parse_token(eei_parser * parser)
 {
 
 }
@@ -885,9 +885,9 @@ int eei_parse_expression(eei_parser * parser, const ee_char_type * expression)
 		const eei_token_type current_token = eei_lexer_next_token(&parser);
 
 		//TODO: Create a complete token
-		eei_token token;
+		//parser->current_token = ...;
 
-		while (!eei_parse_token(parser, token));
+		while (!eei_parse_token(parser));
 	}
 
 	//This should never happen and indicates an undetected discrepancy during parsing
