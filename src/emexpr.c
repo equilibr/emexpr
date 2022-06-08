@@ -343,6 +343,20 @@ enum
 //Parser rule tables
 //------------------
 
+//Operator precedence
+enum
+{
+	eei_precedence_comma = 2,
+	eei_precedence_logical_or = 3,
+	eei_precedence_logical_and = 4,
+	eei_precedence_compare = 5,
+	eei_precedence_power1 = 6,
+	eei_precedence_power2 = 7,
+	eei_precedence_power3 = 8,
+	eei_precedence_function = 10,
+	eei_precedence_postfix = 11,
+};
+
 static const eei_rule_description eei_parser_prefix_rules[] =
 {
 	//Expression start
@@ -367,29 +381,29 @@ static const eei_rule_description eei_parser_prefix_rules[] =
 static const eei_rule_description eei_parser_infix_rules[] =
 {
 	//Sequence delimiter
-	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_delimiter,','), 2),
+	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_delimiter,','), eei_precedence_comma),
 
 	//Function call
-	MAKE_DELIMITED_INFIX_RULE(MAKE_TOKEN(eei_token_delimiter,'('), 10),
+	MAKE_DELIMITED_INFIX_RULE(MAKE_TOKEN(eei_token_delimiter,'('), eei_precedence_function),
 
-	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'|'), 3),
-	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'&'), 4),
-	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'='), 5),
-	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'<'), 5),
-	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'>'), 5),
-	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'+'), 6),
-	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'-'), 6),
-	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'*'), 7),
-	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'/'), 7),
-	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'%'), 7),
-	MAKE_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'^'), 8, eei_rule_right, 0),
+	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'|'), eei_precedence_logical_or),
+	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'&'), eei_precedence_logical_and),
+	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'='), eei_precedence_compare),
+	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'<'), eei_precedence_compare),
+	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'>'), eei_precedence_compare),
+	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'+'), eei_precedence_power1),
+	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'-'), eei_precedence_power1),
+	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'*'), eei_precedence_power2),
+	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'/'), eei_precedence_power2),
+	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'%'), eei_precedence_power2),
+	MAKE_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'^'), eei_precedence_power3, eei_rule_right, 0),
 
 	MAKE_SENTINEL_RULE()
 };
 
 static const eei_rule_description eei_parser_postfix_rules[] =
 {
-	MAKE_POSTFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_identifier), 11),
+	MAKE_POSTFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_identifier), eei_precedence_postfix),
 
 	MAKE_SENTINEL_RULE()
 };
@@ -410,7 +424,7 @@ static const eei_rule_description eei_parser_end_rules[][2] =
 
 	//Function call
 	{
-		MAKE_DELIMITED_INFIX_RULE(MAKE_TOKEN(eei_token_delimiter,'('), 10),
+		MAKE_DELIMITED_INFIX_RULE(MAKE_TOKEN(eei_token_delimiter,'('), eei_precedence_function),
 		MAKE_END_RULE(MAKE_TOKEN(eei_token_delimiter,')'))
 	},
 
