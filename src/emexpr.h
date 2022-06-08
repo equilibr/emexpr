@@ -13,6 +13,9 @@
 extern "C" {
 #endif
 
+//The underlying type of an expression character
+typedef char ee_char_type;
+
 //The type of the variable handled by the engine
 //This type must be copyable by the compiler using the assignment(=) syntax!
 typedef double ee_variable_type;
@@ -60,7 +63,7 @@ typedef struct
 //See its comment for explanations.
 typedef struct
 {
-	const char * const * names;
+	const ee_char_type * const * names;
 	int count;
 } ee_compilation_data_meta;
 
@@ -149,13 +152,13 @@ typedef ee_environment_header * ee_environment;
 //Anayze the expression and return an (upper bound) estimate of needed memory, in bytes.
 //Returns non-positive in case of any error
 //A negative number is the estimate up until the error was encountered
-int ee_guestimate(const char * expression, ee_environment_header * header);
+int ee_guestimate(const ee_char_type * expression, ee_environment_header * header);
 
 //Compile the expression, using the pre-allocated environment
 //Returns the actual memory used, in ee_environment_element.
 //The environment can be resized and moved in memory as needed.
 int ee_compile(
-		const char * expression,
+		const ee_char_type * expression,
 		ee_environment environment,
 		const ee_compilation_data * data);
 

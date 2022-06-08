@@ -35,29 +35,31 @@ typedef enum
 	eei_token_sentinel
 } eei_token_type;
 
+typedef char * tExpressionItem;
+
 typedef struct
 {
-	const char * start;
-	const char * head;
+	const ee_char_type * start;
+	const ee_char_type * head;
 
 	int number_integer;
 	int number_fractional;
 	int number_exponent;
 } eei_lexer_state;
 
-static inline int eei_lexer_is_eof(const char c)
+static inline int eei_lexer_is_eof(const ee_char_type c)
 {
 	return c == '\0';
 }
 
-static inline int eei_lexer_is_space(const char c)
+static inline int eei_lexer_is_space(const ee_char_type c)
 {
 	return
 			(c == ' ') || (c == '\t') || (c == '\r') || (c == '\n');
 }
 
 
-static inline int eei_lexer_is_alpha(const char c)
+static inline int eei_lexer_is_alpha(const ee_char_type c)
 {
 	return
 			((c >= 'a') && (c <= 'z'))
@@ -65,12 +67,12 @@ static inline int eei_lexer_is_alpha(const char c)
 			|| ( c == '_');
 }
 
-static inline int eei_lexer_is_number(const char c)
+static inline int eei_lexer_is_number(const ee_char_type c)
 {
 	return (c >= '0') && (c <= '9');
 }
 
-static inline int eei_lexer_is_delimiter(const char c)
+static inline int eei_lexer_is_delimiter(const ee_char_type c)
 {
 	return
 			(c == ',')
@@ -79,7 +81,7 @@ static inline int eei_lexer_is_delimiter(const char c)
 			|| (c == '{') || (c == '}');
 }
 
-static inline int eei_lexer_is_operator(const char c)
+static inline int eei_lexer_is_operator(const ee_char_type c)
 {
 	return
 			(c == ':') ||(c == '\'') || (c == '.')
@@ -267,7 +269,7 @@ typedef struct
 enum
 {
 	//Token symbol
-	eei_rule_bits_token_char_size = __CHAR_BIT__,
+	eei_rule_bits_token_char_size = sizeof(ee_char_type) * __CHAR_BIT__,
 
 	//Token type. Must accomodate eei_token_type (without the sentinel)
 	eei_rule_bits_token_type_size = 3,
@@ -525,6 +527,9 @@ static const eei_rule_description eei_parser_end_rules[][2] =
 	{MAKE_SENTINEL_RULE(),MAKE_SENTINEL_END_RULE()}
 };
 
+//A group rule description for internal use
+static const eei_rule_item eei_parser_group_rule = STATE(MAKE_DEFAULT_INFIX_RULE(eei_token_group,0));
+
 //A sentinel rule description to use as a return value when needed
 static const eei_rule_item eei_parser_sentinel_rule = STATE(MAKE_SENTINEL_RULE());
 
@@ -594,7 +599,17 @@ eei_rule_description eei_find_end_rule(eei_token token, eei_rule_description rul
 
 typedef struct
 {
-	eei_rule_description rule;
+	//The rule being processed
+	const eei_rule_item * rule;
+
+	//The source token for the rule being processed
+	const ee_char_type * token_start;
+	const ee_char_type * token_end;
+
+	//The token type expected next
+	eei_rule_type next;
+
+	//The precedence of the current node
 	char precedence;
 } eei_parser_node;
 
@@ -613,6 +628,7 @@ typedef struct
 	int top;
 } eei_parser_stack;
 
+
 int eei_stack_push(eei_parser_stack * stack, const eei_parser_node * node)
 {
 	//Push a node to the top of the stack
@@ -622,6 +638,9 @@ int eei_stack_push(eei_parser_stack * stack, const eei_parser_node * node)
 		return 1;
 
 	stack->stack[stack->top].rule = node->rule;
+	stack->stack[stack->top].token_start = node->token_start;
+	stack->stack[stack->top].token_end = node->token_end;
+	stack->stack[stack->top].next = node->next;
 	stack->stack[stack->top].precedence = node->precedence;
 
 	stack->top++;
@@ -839,6 +858,44 @@ int eei_vm_execute(const eei_vm_environment * vm_environment)
 //Parser
 //------
 
+typedef struct
+{
+	eei_parser_stack stack;
+	const ee_compilation_data * data;
+	eei_token_type current_token;
+} eei_parser;
+
+int eei_parse_token(eei_parser * parser, eei_token token)
+{
+
+}
+
+int eei_parse_expression(eei_parser * parser, const ee_char_type * expression)
+{
+	eei_lexer_state lexer_state;
+
+	lexer_state.head = expression;
+
+	//TODO: Push a fake "start" rule - this will simplify things during processing
+
+	//TODO: Start a group - this allows to remove many tests for an empty stack
+
+	while (parser->stack.top > 1)
+	{
+		const eei_token_type current_token = eei_lexer_next_token(&parser);
+
+		//TODO: Create a complete token
+		eei_token token;
+
+		while (!eei_parse_token(parser, token));
+	}
+
+	//This should never happen and indicates an undetected discrepancy during parsing
+	if (parser->stack.top != 1)
+		return -1;
+
+	return 0;
+}
 
 
 //External API
@@ -869,7 +926,7 @@ int ee_vm_init(
 }
 
 
-int ee_guestimate(const char * expression, ee_environment_header *header)
+int ee_guestimate(const ee_char_type * expression, ee_environment_header *header)
 {
 	int identifiers = 0;
 	int numbers = 0;
@@ -937,15 +994,15 @@ int ee_guestimate(const char * expression, ee_environment_header *header)
 	return (token_type == eei_token_error) ? -estimate : estimate;
 }
 
-int ee_compile(const char * expression,
+int ee_compile(const ee_char_type * expression,
 		ee_environment environment,
 		const ee_compilation_data *data)
 {
-	eei_lexer_state lexer_state;
-	eei_token_type current_token = eei_token_error;
+	//TODO: Prepare symbol tables
+	//TODO: Correctly setup the parser structure from the environment
+	eei_parser parser;
 
-
-
+	return eei_parse_expression(&parser, expression);
 }
 
 int ee_evaluate(ee_environment environment, ee_variable result)
