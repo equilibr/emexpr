@@ -30,33 +30,36 @@ typedef enum
 	eei_token_group,
 
 	//Sentinel value to count the number of enumeraions
+	//The _check_type_sizes struct uses this to validate all values fit in the data type used for the token
 	//DO NOT use it in the actual tokens since it may not fit in the allocated bits!
 	eei_token_sentinel
 } eei_token_type;
 
+typedef char * tExpressionItem;
+
 typedef struct
 {
-	const char * start;
-	const char * head;
+	const ee_char_type * start;
+	const ee_char_type * head;
 
 	int number_integer;
 	int number_fractional;
 	int number_exponent;
 } eei_lexer_state;
 
-static inline int eei_lexer_is_eof(const char c)
+static inline int eei_lexer_is_eof(const ee_char_type c)
 {
 	return c == '\0';
 }
 
-static inline int eei_lexer_is_space(const char c)
+static inline int eei_lexer_is_space(const ee_char_type c)
 {
 	return
 			(c == ' ') || (c == '\t') || (c == '\r') || (c == '\n');
 }
 
 
-static inline int eei_lexer_is_alpha(const char c)
+static inline int eei_lexer_is_alpha(const ee_char_type c)
 {
 	return
 			((c >= 'a') && (c <= 'z'))
@@ -64,12 +67,12 @@ static inline int eei_lexer_is_alpha(const char c)
 			|| ( c == '_');
 }
 
-static inline int eei_lexer_is_number(const char c)
+static inline int eei_lexer_is_number(const ee_char_type c)
 {
 	return (c >= '0') && (c <= '9');
 }
 
-static inline int eei_lexer_is_delimiter(const char c)
+static inline int eei_lexer_is_delimiter(const ee_char_type c)
 {
 	return
 			(c == ',')
@@ -78,7 +81,7 @@ static inline int eei_lexer_is_delimiter(const char c)
 			|| (c == '{') || (c == '}');
 }
 
-static inline int eei_lexer_is_operator(const char c)
+static inline int eei_lexer_is_operator(const ee_char_type c)
 {
 	return
 			(c == ':') ||(c == '\'') || (c == '.')
@@ -104,6 +107,78 @@ int eei_lexer_consume_digits(eei_lexer_state * state)
 	return number;
 }
 
+eei_token_type eei_lexer_consume_identifier(eei_lexer_state * state)
+{
+	//An identifier can consist of alpha or numerics
+	do { ++state->head; } while
+			(
+			 !eei_lexer_is_eof(*state->head)
+			 &&
+			 (
+				 eei_lexer_is_alpha(*state->head)
+				 || eei_lexer_is_number(*state->head)
+				 )
+			 );
+
+	return eei_token_identifier;
+}
+
+eei_token_type eei_lexer_consume_number(eei_lexer_state * state)
+{
+	//Numbers are scanned piece-wise and later processed by the parser
+	state->number_integer = 0;
+	state->number_fractional = 0;
+	state->number_exponent = 0;
+
+	//Scan the integer part
+	state->number_integer = eei_lexer_consume_digits(state);
+
+	//Scan the fractional part
+	if (*state->head == '.')
+	{
+		state->head++;
+
+		//A number MUST follow
+		if (!eei_lexer_is_number(*state->head))
+			return eei_token_error;
+
+		state->number_fractional = eei_lexer_consume_digits(state);
+	}
+
+	if (eei_lexer_is_alpha(*state->head))
+	{
+		//No other letter except 'e' is allowed adjacent to a number
+		if (*state->head != 'e')
+			return eei_token_error;
+	}
+
+	//Scan the exponent part
+	if (*state->head == 'e')
+	{
+		state->number_exponent = 1;
+
+		state->head++;
+
+		//A number or sign MUST follow
+
+		if (*state->head == '+')
+		{
+			state->head++;
+		}
+		else if (*state->head != '-')
+		{
+			state->number_exponent = -1;
+			state->head++;
+		}
+		else if (!eei_lexer_is_number(*state->head))
+			return eei_token_error;
+
+		state->number_exponent *= eei_lexer_consume_digits(state);
+	}
+
+	return eei_token_number;
+}
+
 eei_token_type eei_lexer_next_token(eei_lexer_state * state)
 {
 	//Parse the input stream for the next token
@@ -118,6 +193,12 @@ eei_token_type eei_lexer_next_token(eei_lexer_state * state)
 
 	//The first character determines the token class
 
+	if (eei_lexer_is_number(*state->head))
+		return eei_lexer_consume_number(state);
+
+	if (eei_lexer_is_alpha(*state->head))
+		return eei_lexer_consume_identifier(state);
+
 	if (eei_lexer_is_delimiter(*state->head))
 	{
 		//Delimiters are always single character
@@ -130,78 +211,6 @@ eei_token_type eei_lexer_next_token(eei_lexer_state * state)
 		//Only single-character operators are currently supported
 		state->head++;
 		return eei_token_operator;
-	}
-
-	if (eei_lexer_is_alpha(*state->head))
-	{
-		//An identifier can consist of alpha or numerics
-		do { ++state->head; } while
-				(
-				 !eei_lexer_is_eof(*state->head)
-				 &&
-				 (
-					 eei_lexer_is_alpha(*state->head)
-					 || eei_lexer_is_number(*state->head)
-					 )
-				 );
-
-		return eei_token_identifier;
-	}
-
-	if (eei_lexer_is_number(*state->head))
-	{
-		//Numbers are scanned piece-wise and later processed by the parser
-		state->number_integer = 0;
-		state->number_fractional = 0;
-		state->number_exponent = 0;
-
-		//Scan the integer part
-		state->number_integer = eei_lexer_consume_digits(state);
-
-		//Scan the fractional part
-		if (*state->head == '.')
-		{
-			state->head++;
-
-			//A number MUST follow
-			if (!eei_lexer_is_number(*state->head))
-				return eei_token_error;
-
-			state->number_fractional = eei_lexer_consume_digits(state);
-		}
-
-		if (eei_lexer_is_alpha(*state->head))
-		{
-			//No other letter except 'e' is allowed adjacent to a number
-			if (*state->head != 'e')
-				return eei_token_error;
-		}
-
-		//Scan the exponent part
-		if (*state->head == 'e')
-		{
-			state->number_exponent = 1;
-
-			state->head++;
-
-			//A number or sign MUST follow
-
-			if (*state->head == '+')
-			{
-				state->head++;
-			}
-			else if (*state->head != '-')
-			{
-				state->number_exponent = -1;
-				state->head++;
-			}
-			else if (!eei_lexer_is_number(*state->head))
-				return eei_token_error;
-
-			state->number_exponent *= eei_lexer_consume_digits(state);
-		}
-
-		return eei_token_number;
 	}
 
 	return eei_token_error;
@@ -227,72 +236,154 @@ typedef enum
 
 
 //Holds the token type and the symbol
+//A token has two parts:
+//	A type, as enumerated in eei_token_type
+//	A symbol, used to differentiate between the various delimiters and operators
 typedef unsigned short int eei_token;
 
 //Holds a parsing rule
+//A rule consists of a token and the rule type, as enumerated in eei_rule_type
 typedef unsigned short int eei_rule;
 
 //Holds a parsing rule description
+//A description consists of:
+//	A rule - when this token is expected
+//	Its associativity & precedence - how to combine it with other rules
+//	Delimited flag - when set this rule must have a matching end-dilimiter rule
+//	Next - the rule type to expected next
 typedef unsigned int eei_rule_description;
 
+typedef void (*eei_rule_handler)(void);
+
+//A rule table item to hold rules and their handler functions
+typedef struct
+{
+	//Rule description
+	eei_rule_description rule;
+
+	//Handler function for the rule
+	eei_rule_handler handler;
+} eei_rule_item;
+
+//Field sizes of the various parts for the token, rule & rule description
 enum
 {
-	//Field sizes
-	eei_rule_bits_token_char_size = __CHAR_BIT__,
+	//Token symbol
+	eei_rule_bits_token_char_size = sizeof(ee_char_type) * __CHAR_BIT__,
+
+	//Token type. Must accomodate eei_token_type (without the sentinel)
 	eei_rule_bits_token_type_size = 3,
+
+	//Rule type. Must accomodate eei_rule_type
 	eei_rule_bits_type_size = 2,
+
+	//Rule description precedence. Must be wide enough to alllow for the highest used precedence
 	eei_rule_bits_precedence_size = 8,
+
+	//Rule description accosiativity. Must accomodate eei_rule_associativity
 	eei_rule_bits_accosiativity_size = 1,
+
+	//Rule description end-delimited flag. Single bit.
 	eei_rule_bits_end_delimiter_size = 1,
 
+	//Compound size of a token
+	//The _check_type_sizes struct uses this to validate all parts fit in the data type used for the token
 	eei_rule_bits_token_size = eei_rule_bits_token_char_size + eei_rule_bits_token_type_size,
+
+	//Compound size of a rule
+	//The _check_type_sizes struct uses this to validate all parts fit in the data type used for the rule
 	eei_rule_bits_rule_size = eei_rule_bits_token_size + eei_rule_bits_type_size,
-	eei_rule_bits_next_size = eei_rule_bits_type_size,
+
+	//Size of the 'next' part of a rule description.
+	eei_rule_bits_next_size = eei_rule_bits_type_size
+} eei_rule_sizes;
+
+//Field offsets of the various parts for the token, rule & rule description
+enum
+{
+	//Global offset for all parts.
+	//Kept here to simplify injecting custom data into the items.
+	//The offset is used in all manifestations of the item - as stand alone or as parts of a compound
 	eei_rule_bits_start_offset = 0,
 
+
 	//Token
+	//-----
+
+	//Offset for the symbol part of a token
 	eei_rule_bits_token_char_offset = eei_rule_bits_start_offset,
+
+	//Offset for the type part of a token
 	eei_rule_bits_token_type_offset = eei_rule_bits_token_char_offset + eei_rule_bits_token_char_size,
+
+	//Offset of the complete token
 	eei_rule_bits_token_offset = eei_rule_bits_start_offset,
 
+
 	//Rule
+	//----
+
+	//Offset for the type part of a rule
 	eei_rule_bits_type_offset = eei_rule_bits_token_offset + eei_rule_bits_token_size,
+
+	//Offset of the complete rule
 	eei_rule_bits_rule_offset = eei_rule_bits_token_offset,
 
+
 	//Rule description
+	//----------------
+
+	//Offset for the precedence part of a rule description
 	eei_rule_bits_precedence_offset = eei_rule_bits_rule_offset + eei_rule_bits_rule_size,
+
+	//Offset for the next  part of a rule description
 	eei_rule_bits_next_offset = eei_rule_bits_precedence_offset + eei_rule_bits_precedence_size,
+
+	//Offset for the accosiativity part of a rule description
 	eei_rule_bits_accosiativity_offset = eei_rule_bits_next_offset + eei_rule_bits_next_size,
+
+	//Offset for the end-delimited flag of a rule description
 	eei_rule_bits_end_delimiter_offset = eei_rule_bits_accosiativity_offset + eei_rule_bits_accosiativity_size,
 
-	//Value used to validate the size does not overflows the data type used for the rule
+	//Total size of a rule description, in bits
+	//The _check_type_sizes struct uses this to validate all parts fit in the data type used for the rule description
 	eei_rule_bits_total_size = eei_rule_bits_end_delimiter_offset + eei_rule_bits_end_delimiter_size
-} eei_rule_bits;
+} eei_rule_offsets;
 
-#define MAKE_PART_BITS(data, offset, size) (((data) & ((1 << size)-1)) << offset)
-#define GET_PART_BITS(data, offset, size) (((data) >> offset) & ((1 << size)-1))
 
+//Create a bitmask of specified width and offset
+#define BITMASK(width) ((( (1ull<<(width - 1)) - 1) << 1) | 1 )
+#define BITMASKS(width, offset) (BITMASK(width) << (offset))
+
+#define MAKE_PART_BITS(data, offset, size) ( ((data) & BITMASK(size)) << offset )
+#define GET_PART_BITS(data, offset, size) ( ((data) >> offset) & BITMASK(size) )
+
+//Extract a token from a rule description
 #define GET_TOKEN(rule_description) \
 	((eei_token)GET_PART_BITS(rule_description, eei_rule_bits_token_offset, eei_rule_bits_token_size))
 
+//Create a token from its parts
 #define MAKE_TOKEN(token_type, token_symbol) \
 	(eei_token)(\
 	MAKE_PART_BITS(token_type, eei_rule_bits_token_type_offset, eei_rule_bits_token_type_size) |\
 	MAKE_PART_BITS(token_symbol, eei_rule_bits_token_char_offset, eei_rule_bits_token_char_size) \
 	)
 
+//Create a simple token that does not use the symbol
 #define MAKE_SIMPLE_TOKEN(token_type) \
 	(eei_token)(\
 	MAKE_PART_BITS(token_type, eei_rule_bits_token_type_offset, eei_rule_bits_token_type_size) |\
 	MAKE_PART_BITS('\0', eei_rule_bits_token_char_offset, eei_rule_bits_token_char_size) \
 	)
 
+//Create a rule from its parts
 #define MAKE_RULE(token, type) \
 	(eei_rule)(\
 	MAKE_PART_BITS(token, eei_rule_bits_token_offset, eei_rule_bits_token_size) |\
 	MAKE_PART_BITS(type, eei_rule_bits_type_offset, eei_rule_bits_type_size) \
 	)
 
+//Create a rule description from its parts
 #define MAKE_RULE_DESCRIPTION(rule, precedence, next, accosiativity, end_delimiter) \
 	(eei_rule_description)(\
 	MAKE_PART_BITS(rule, eei_rule_bits_rule_offset, eei_rule_bits_rule_size) |\
@@ -339,59 +430,78 @@ enum
 //Make a special rule that marks parsing groups
 #define MAKE_GROUP_RULE() MAKE_DELIMITED_INFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_group),0)
 
+//Create a rule than only represents state
+#define STATE(rule) {rule, (eei_rule_handler)0}
+
+//Create a rule with a handler
+#define HANDLE(rule, handler) {rule, handler}
 
 //Parser rule tables
 //------------------
 
-static const eei_rule_description eei_parser_prefix_rules[] =
+//Operator precedence
+enum
+{
+	eei_precedence_comma = 2,
+	eei_precedence_logical_or = 3,
+	eei_precedence_logical_and = 4,
+	eei_precedence_compare = 5,
+	eei_precedence_power1 = 6,
+	eei_precedence_power2 = 7,
+	eei_precedence_power3 = 8,
+	eei_precedence_function = 10,
+	eei_precedence_postfix = 11,
+};
+
+static const eei_rule_item eei_parser_prefix_rules[] =
 {
 	//Expression start
-	MAKE_DELIMITED_PREFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_sof)),
+	STATE(MAKE_DELIMITED_PREFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_sof))),
 
-	MAKE_PREFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_number),0,eei_rule_infix),
-	MAKE_PREFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_identifier),0,eei_rule_infix),
+	STATE(MAKE_PREFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_number),0,eei_rule_infix)),
+	STATE(MAKE_PREFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_identifier),0,eei_rule_infix)),
 
 	//Grouping parens
-	MAKE_DELIMITED_PREFIX_RULE(MAKE_TOKEN(eei_token_delimiter,'(')),
+	STATE(MAKE_DELIMITED_PREFIX_RULE(MAKE_TOKEN(eei_token_delimiter,'('))),
 
-	MAKE_DEFAULT_PREFIX_RULE(MAKE_TOKEN(eei_token_operator,'!')),
-	MAKE_DEFAULT_PREFIX_RULE(MAKE_TOKEN(eei_token_operator,'~')),
-	MAKE_DEFAULT_PREFIX_RULE(MAKE_TOKEN(eei_token_operator,'&')),
-	MAKE_DEFAULT_PREFIX_RULE(MAKE_TOKEN(eei_token_operator,'|')),
-	MAKE_DEFAULT_PREFIX_RULE(MAKE_TOKEN(eei_token_operator,'+')),
-	MAKE_DEFAULT_PREFIX_RULE(MAKE_TOKEN(eei_token_operator,'-')),
+	STATE(MAKE_DEFAULT_PREFIX_RULE(MAKE_TOKEN(eei_token_operator,'!'))),
+	STATE(MAKE_DEFAULT_PREFIX_RULE(MAKE_TOKEN(eei_token_operator,'~'))),
+	STATE(MAKE_DEFAULT_PREFIX_RULE(MAKE_TOKEN(eei_token_operator,'&'))),
+	STATE(MAKE_DEFAULT_PREFIX_RULE(MAKE_TOKEN(eei_token_operator,'|'))),
+	STATE(MAKE_DEFAULT_PREFIX_RULE(MAKE_TOKEN(eei_token_operator,'+'))),
+	STATE(MAKE_DEFAULT_PREFIX_RULE(MAKE_TOKEN(eei_token_operator,'-'))),
 
-	MAKE_SENTINEL_RULE()
+	STATE(MAKE_SENTINEL_RULE())
 };
 
-static const eei_rule_description eei_parser_infix_rules[] =
+static const eei_rule_item eei_parser_infix_rules[] =
 {
 	//Sequence delimiter
-	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_delimiter,','), 2),
+	STATE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_delimiter,','), eei_precedence_comma)),
 
 	//Function call
-	MAKE_DELIMITED_INFIX_RULE(MAKE_TOKEN(eei_token_delimiter,'('), 10),
+	STATE(MAKE_DELIMITED_INFIX_RULE(MAKE_TOKEN(eei_token_delimiter,'('), eei_precedence_function)),
 
-	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'|'), 3),
-	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'&'), 4),
-	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'='), 5),
-	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'<'), 5),
-	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'>'), 5),
-	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'+'), 6),
-	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'-'), 6),
-	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'*'), 7),
-	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'/'), 7),
-	MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'%'), 7),
-	MAKE_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'^'), 8, eei_rule_right, 0),
+	STATE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'|'), eei_precedence_logical_or)),
+	STATE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'&'), eei_precedence_logical_and)),
+	STATE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'='), eei_precedence_compare)),
+	STATE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'<'), eei_precedence_compare)),
+	STATE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'>'), eei_precedence_compare)),
+	STATE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'+'), eei_precedence_power1)),
+	STATE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'-'), eei_precedence_power1)),
+	STATE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'*'), eei_precedence_power2)),
+	STATE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'/'), eei_precedence_power2)),
+	STATE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'%'), eei_precedence_power2)),
+	STATE(MAKE_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'^'), eei_precedence_power3, eei_rule_right, 0)),
 
-	MAKE_SENTINEL_RULE()
+	STATE(MAKE_SENTINEL_RULE())
 };
 
-static const eei_rule_description eei_parser_postfix_rules[] =
+static const eei_rule_item eei_parser_postfix_rules[] =
 {
-	MAKE_POSTFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_identifier), 11),
+	STATE(MAKE_POSTFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_identifier), eei_precedence_postfix)),
 
-	MAKE_SENTINEL_RULE()
+	STATE(MAKE_SENTINEL_RULE())
 };
 
 static const eei_rule_description eei_parser_end_rules[][2] =
@@ -410,20 +520,27 @@ static const eei_rule_description eei_parser_end_rules[][2] =
 
 	//Function call
 	{
-		MAKE_DELIMITED_INFIX_RULE(MAKE_TOKEN(eei_token_delimiter,'('), 10),
+		MAKE_DELIMITED_INFIX_RULE(MAKE_TOKEN(eei_token_delimiter,'('), eei_precedence_function),
 		MAKE_END_RULE(MAKE_TOKEN(eei_token_delimiter,')'))
 	},
 
 	{MAKE_SENTINEL_RULE(),MAKE_SENTINEL_END_RULE()}
 };
 
+//A group rule description for internal use
+static const eei_rule_item eei_parser_group_rule = STATE(MAKE_DEFAULT_INFIX_RULE(eei_token_group,0));
 
-eei_rule_description eei_find_rule(eei_token token, eei_rule_type expected)
+//A sentinel rule description to use as a return value when needed
+static const eei_rule_item eei_parser_sentinel_rule = STATE(MAKE_SENTINEL_RULE());
+
+
+
+const eei_rule_item * eei_find_rule(eei_token token, eei_rule_type expected)
 {
 	//Find the rule of the expected type matching the given token
 	//Will return the sentinel rule on failure
 
-	const eei_rule_description * table;
+	const eei_rule_item * table;
 
 	switch (expected)
 	{
@@ -441,19 +558,19 @@ eei_rule_description eei_find_rule(eei_token token, eei_rule_type expected)
 
 		case eei_rule_end:
 			//The end rules tables can not be searched using this function
-			return MAKE_SENTINEL_RULE();
+			return &eei_parser_sentinel_rule;
 	}
 
 	//Use a simple linear search since the tables are small and the
 	// overhead of a binary search is not worth it
-	while (*table != MAKE_SENTINEL_RULE())
+	while (table->rule != MAKE_SENTINEL_RULE())
 	{
-		if (token == GET_TOKEN(*table))
+		if (token == GET_TOKEN(table->rule))
 			break;
 		table++;
 	}
 
-	return *table;
+	return table;
 }
 
 eei_rule_description eei_find_end_rule(eei_token token, eei_rule_description rule)
@@ -482,7 +599,17 @@ eei_rule_description eei_find_end_rule(eei_token token, eei_rule_description rul
 
 typedef struct
 {
-	eei_rule_description rule;
+	//The rule being processed
+	const eei_rule_item * rule;
+
+	//The source token for the rule being processed
+	const ee_char_type * token_start;
+	const ee_char_type * token_end;
+
+	//The token type expected next
+	eei_rule_type next;
+
+	//The precedence of the current node
 	char precedence;
 } eei_parser_node;
 
@@ -501,6 +628,7 @@ typedef struct
 	int top;
 } eei_parser_stack;
 
+
 int eei_stack_push(eei_parser_stack * stack, const eei_parser_node * node)
 {
 	//Push a node to the top of the stack
@@ -510,6 +638,9 @@ int eei_stack_push(eei_parser_stack * stack, const eei_parser_node * node)
 		return 1;
 
 	stack->stack[stack->top].rule = node->rule;
+	stack->stack[stack->top].token_start = node->token_start;
+	stack->stack[stack->top].token_end = node->token_end;
+	stack->stack[stack->top].next = node->next;
 	stack->stack[stack->top].precedence = node->precedence;
 
 	stack->top++;
@@ -727,6 +858,44 @@ int eei_vm_execute(const eei_vm_environment * vm_environment)
 //Parser
 //------
 
+typedef struct
+{
+	eei_parser_stack stack;
+	const ee_compilation_data * data;
+	eei_token current_token;
+} eei_parser;
+
+int eei_parse_token(eei_parser * parser)
+{
+
+}
+
+int eei_parse_expression(eei_parser * parser, const ee_char_type * expression)
+{
+	eei_lexer_state lexer_state;
+
+	lexer_state.head = expression;
+
+	//TODO: Push a fake "start" rule - this will simplify things during processing
+
+	//TODO: Start a group - this allows to remove many tests for an empty stack
+
+	while (parser->stack.top > 1)
+	{
+		const eei_token_type current_token = eei_lexer_next_token(&parser);
+
+		//TODO: Create a complete token
+		//parser->current_token = ...;
+
+		while (!eei_parse_token(parser));
+	}
+
+	//This should never happen and indicates an undetected discrepancy during parsing
+	if (parser->stack.top != 1)
+		return -1;
+
+	return 0;
+}
 
 
 //External API
@@ -757,7 +926,7 @@ int ee_vm_init(
 }
 
 
-int ee_guestimate(const char * expression, ee_environment_header *header)
+int ee_guestimate(const ee_char_type * expression, ee_environment_header *header)
 {
 	int identifiers = 0;
 	int numbers = 0;
@@ -809,26 +978,31 @@ int ee_guestimate(const char * expression, ee_environment_header *header)
 	} while ((token_type != eei_token_eof) && (token_type != eei_token_error));
 
 	header->constants = numbers;
-	header->max_stack = actuals * 2 + groups + operators;
-	header->internal = identifiers * 2 + operators;
+
+	//Runtime maximum stack size
+	header->max_stack = actuals + groups * 2 + operators + identifiers;
+
+	//Concrete syntax tree maximum depth
+	header->internal = identifiers * 2 + groups;
 
 	estimate = sizeof(ee_environment_header);
-	estimate += sizeof(ee_variable_type) * header->constants;
+	estimate += sizeof(ee_variable_type) * numbers;
+	estimate += sizeof(ee_variable_type*) * identifiers;
 	estimate += sizeof(ee_variable_type) * header->max_stack;
 	estimate += sizeof(ee_environment_element) * header->internal;
 
 	return (token_type == eei_token_error) ? -estimate : estimate;
 }
 
-int ee_compile(const char * expression,
+int ee_compile(const ee_char_type * expression,
 		ee_environment environment,
 		const ee_compilation_data *data)
 {
-	eei_lexer_state lexer_state;
-	eei_token_type current_token = eei_token_error;
+	//TODO: Prepare symbol tables
+	//TODO: Correctly setup the parser structure from the environment
+	eei_parser parser;
 
-
-
+	return eei_parse_expression(&parser, expression);
 }
 
 int ee_evaluate(ee_environment environment, ee_variable result)
