@@ -225,6 +225,10 @@ eei_token_type eei_lexer_next_token(eei_lexer_state * state)
 	return eei_token_error;
 }
 
+//Parser forward declarations
+//---------------------------
+typedef struct eei_parser_stack_ eei_parser_stack;
+typedef struct eei_parser_node_ eei_parser_node;
 
 //Parser rules
 //------------
@@ -265,6 +269,7 @@ typedef int eei_precedence;
 //	Next - the rule type to expected next
 typedef unsigned int eei_rule_description;
 
+//typedef ee_parser_reply (*eei_rule_handler)(eei_parser * parser, const struct eei_parser_node_ * node);
 typedef void (*eei_rule_handler)(void);
 
 //A rule table item to hold rules and their handler functions
@@ -276,6 +281,7 @@ typedef struct
 	//Handler function for the rule
 	eei_rule_handler handler;
 } eei_rule_item;
+
 
 //Field sizes of the various parts for the token, rule & rule description
 enum
@@ -651,22 +657,27 @@ typedef struct
 	int top;
 } eei_parser_stack;
 
-void eei_stack_copynode(eei_parser_node * dst, const eei_parser_node * src)
+ee_parser_reply eei_stack_copynode(eei_parser_node * dst, const eei_parser_node * src)
 {
+	if (!dst || !src)
+		return ee_parser_stack_error;
+
 	dst->rule = src->rule;
 	dst->token_start = src->token_start;
 	dst->token_end = src->token_end;
 	dst->next = src->next;
 	dst->precedence = src->precedence;
+
+	return ee_parser_ok;
 }
 
-int eei_stack_push(eei_parser_stack * stack, const eei_parser_node * node)
+ee_parser_reply eei_stack_push(eei_parser_stack * stack, const eei_parser_node * node)
 {
 	//Push a node to the top of the stack
 	//Return on-zero on error
 
 	if (stack->top >= stack->size)
-		return 1;
+		return ee_parser_stack_overflow;
 
 	stack->stack[stack->top].rule = node->rule;
 	stack->stack[stack->top].token_start = node->token_start;
@@ -676,18 +687,18 @@ int eei_stack_push(eei_parser_stack * stack, const eei_parser_node * node)
 
 	stack->top++;
 
-	return 0;
+	return ee_parser_ok;
 }
 
-int eei_stack_pop(eei_parser_stack * stack, eei_parser_node * node)
+ee_parser_reply eei_stack_pop(eei_parser_stack * stack, eei_parser_node * node)
 {
 	if (stack->top == 0)
-		return 1;
+		return ee_parser_stack_underflow;
 
 	eei_stack_copynode(node, &stack->stack[stack->top - 1]);
 
 	stack->top--;
-	return 0;
+	return ee_parser_ok;
 }
 
 eei_parser_node * eei_stack_top(eei_parser_stack * stack, int distance)
@@ -911,9 +922,61 @@ typedef struct
 {
 	eei_parser_stack stack;
 	const ee_compilation_data * data;
+
+	eei_parser_token error_token;
+	ee_parser_reply status;
 } eei_parser;
 
-static inline void eei_parse_push(
+ee_parser_reply eei_parse_error(
+		eei_parser * parser,
+		ee_parser_reply reply,
+		const eei_parser_token * token)
+{
+	if (reply == ee_parser_ok)
+	{
+		if (token && (parser->error_token.token != MAKE_SIMPLE_TOKEN(eei_token_sof)))
+		{
+			//Save the current progress, but do not override existng data
+			parser->error_token.token = token->token;
+			parser->error_token.start = token->start;
+			parser->error_token.end = token->end;
+		}
+
+		return ee_parser_ok;
+	}
+
+	//Do not change an existing error status
+	if (parser->status != ee_parser_ok)
+		return reply;
+
+	parser->status = reply;
+
+	if (token)
+	{
+		//Save the error position
+		parser->error_token.token = token->token;
+		parser->error_token.start = token->start;
+		parser->error_token.end = token->end;
+	}
+
+	return reply;
+}
+
+ee_parser_reply eei_parse_error_notoken(
+		eei_parser * parser,
+		ee_parser_reply reply)
+{
+	if (reply == ee_parser_ok)
+		return ee_parser_ok;
+
+	//Do not change an existing error status
+	if (parser->status == ee_parser_ok)
+		parser->status = reply;
+
+	return reply;
+}
+
+static inline ee_parser_reply eei_parse_push(
 		eei_parser * parser,
 		const eei_rule_item * rule,
 		const eei_rule_type next,
@@ -928,20 +991,50 @@ static inline void eei_parse_push(
 	node.rule = rule;
 	node.next = next;
 	node.precedence = precedence;
-	eei_stack_push(&parser->stack, &node);
+
+	return eei_parse_error(parser, eei_stack_push(&parser->stack, &node), token);
 }
 
-static inline void eei_parse_pushGroupRule(eei_parser * parser)
+static inline ee_parser_reply eei_parse_pop(
+		eei_parser * parser,
+		eei_parser_node * node)
+{
+	return eei_parse_error_notoken(parser, eei_stack_pop(&parser->stack, node));
+}
+
+static inline ee_parser_reply eei_parse_popT(
+		eei_parser * parser,
+		eei_parser_node * node,
+		const eei_parser_token * token)
+{
+	return eei_parse_error(parser, eei_stack_pop(&parser->stack, node), token);
+}
+
+static inline ee_parser_reply eei_parse_testPop(eei_parser * parser, int distance)
+{
+	//Test a pop can be performed
+	if (eei_stack_top(&parser->stack, distance) != (eei_parser_node*)0)
+		return ee_parser_ok;
+
+	if (parser->status == ee_parser_ok)
+		parser->status = ee_parser_stack_underflow;
+
+	return ee_parser_stack_underflow;
+}
+
+static inline ee_parser_reply eei_parse_pushGroupRule(
+		eei_parser * parser,
+		const eei_parser_token * token)
 {
 	eei_parser_node node;
 
-	node.token_start = eei_stack_top(&parser->stack, 0)->token_start;
-	node.token_end = eei_stack_top(&parser->stack, 0)->token_end;
-
+	node.token_start = token->start;
+	node.token_end = token->end;
 	node.rule = &eei_parser_group_rule;
 	node.next = eei_rule_prefix;
 	node.precedence = 0;
-	eei_stack_push(&parser->stack, &node);
+
+	return eei_parse_error(parser, eei_stack_push(&parser->stack, &node), token);
 }
 
 void eei_parse_doneNode(eei_parser * parser, const eei_parser_node * node)
@@ -958,7 +1051,10 @@ void eei_parse_done(eei_parser * parser)
 	//Attach the current node as a child to the parent node
 
 	eei_parser_node node;
-	eei_stack_pop(&parser->stack, &node);
+
+	if (eei_parse_pop(parser, &node) != ee_parser_ok)
+		return;
+
 	eei_parse_doneNode(parser, &node);
 }
 
@@ -979,7 +1075,7 @@ static inline void eei_parse_parsePrefix(
 		//Push a special group to reset the precedence inside the delimited group
 		//	without affecting the precedence processing of the tokens that will
 		//	follow the group.
-		eei_parse_pushGroupRule(parser);
+		eei_parse_pushGroupRule(parser, token);
 }
 
 static inline void eei_parse_parseInfix(
@@ -988,7 +1084,11 @@ static inline void eei_parse_parseInfix(
 		const eei_parser_token * token)
 {
 	eei_parser_node node;
-	eei_stack_pop(&parser->stack, &node);
+
+	if (eei_parse_popT(parser, &node, token) != ee_parser_ok)
+		return;
+
+	eei_parse_error(parser, eei_stack_pop(&parser->stack, &node), token);
 
 	eei_parse_push(
 				parser,
@@ -1002,7 +1102,7 @@ static inline void eei_parse_parseInfix(
 	eei_parse_doneNode(parser, &node);
 
 	if (GET_RULE_TYPE(rule->rule) == eei_token_delimiter)
-		eei_parse_pushGroupRule(parser);
+		eei_parse_pushGroupRule(parser, token);
 }
 
 void eei_parse_parsePostfix(
@@ -1047,7 +1147,9 @@ void eei_parse_foldPrecedence(eei_parser * parser, const eei_rule_item * rule)
 {
 	const eei_precedence precedence = GET_RULE_PRECEDENCE(rule->rule);
 
-	if (eei_stack_top(&parser->stack, 0)->precedence >= precedence)
+	if (
+		parser->stack.top
+		&& (eei_stack_top(&parser->stack, 0)->precedence >= precedence))
 	{
 		//The current infix token is of lower precedence than
 		//	the currently top node.
@@ -1059,12 +1161,14 @@ void eei_parse_foldPrecedence(eei_parser * parser, const eei_rule_item * rule)
 		//This stop codition ensures that we end this loop
 		//	with the top node at a precedence higher, and the node above
 		//	it with a lower one, than us.
-		while (eei_stack_top(&parser->stack, 1)->precedence >= precedence)
+		while (
+			   (parser->stack.top > 1)
+			   && (eei_stack_top(&parser->stack, 1)->precedence >= precedence))
 			eei_parse_done(parser);
 	}
 }
 
-int eei_parse_foldEndDilimiter(
+void eei_parse_foldEndDilimiter(
 		eei_parser * parser,
 		const eei_parser_token * token)
 {
@@ -1092,8 +1196,13 @@ int eei_parse_foldEndDilimiter(
 		{
 			//The top node must have an end delimiter but
 			//	the current token is not that delimiter!
-			//TODO: Return an error condition
-			return -1;
+			parser->status = ee_parser_expression_unmatched_end;
+
+			//Use the END token as the error position
+			parser->error_token.token = token->token;
+			parser->error_token.start = token->start;
+			parser->error_token.end = token->end;
+			return;
 		}
 
 		//Attach the current end rule to the tree
@@ -1107,14 +1216,12 @@ int eei_parse_foldEndDilimiter(
 		//	so an infix must follow
 //		topNode().next = CST::Rule::Type::Infix;
 
-		return 1;
+		return;
 	}
-
-	return 0;
 }
 
 
-int eei_parse_token(eei_parser * parser, eei_parser_token * token)
+void eei_parse_token(eei_parser * parser, eei_parser_token * token)
 {
 	const eei_rule_type expected = eei_stack_top(&parser->stack, 0)->next;
 	const eei_rule_item * rule = eei_find_rule(token->token, expected);
@@ -1159,16 +1266,17 @@ int eei_parse_token(eei_parser * parser, eei_parser_token * token)
 
 	//The token was processed
 	if (foundExpected)
-		return 1;
+		return;
 
 	//The current token is not any expected token - it must be some END delimiter
 	eei_parse_foldPrefix(parser);
-	return eei_parse_foldEndDilimiter(parser, token);
+	eei_parse_foldEndDilimiter(parser, token);
 }
 
 void eei_parse_init(eei_parser * parser, const ee_char_type * expression)
 {
 	eei_parser_node node;
+	eei_parser_token token;
 
 	node.token_start = expression;
 	node.token_end = expression;
@@ -1180,7 +1288,15 @@ void eei_parse_init(eei_parser * parser, const ee_char_type * expression)
 	eei_stack_push(&parser->stack, &node);
 
 	//Start a group - this allows to remove many tests for an empty stack
-	eei_parse_pushGroupRule(parser);
+	token.token = MAKE_SIMPLE_TOKEN(eei_token_group);
+	token.start = expression;
+	token.end = expression;
+	eei_parse_pushGroupRule(parser, &token);
+
+	parser->status = ee_parser_ok;
+	parser->error_token.token = MAKE_SIMPLE_TOKEN(eei_token_sof);
+	parser->error_token.start = expression;
+	parser->error_token.end = expression;
 }
 
 int eei_parse_expression(eei_parser * parser, const ee_char_type * expression)
@@ -1190,7 +1306,7 @@ int eei_parse_expression(eei_parser * parser, const ee_char_type * expression)
 
 	eei_parse_init(parser, expression);
 
-	while (parser->stack.top > 1)
+	while (parser->status == ee_parser_ok)
 	{
 		eei_parser_token token;
 		const eei_token_type token_type = eei_lexer_next_token(&lexer_state);
@@ -1204,12 +1320,10 @@ int eei_parse_expression(eei_parser * parser, const ee_char_type * expression)
 		else
 			token.token = MAKE_SIMPLE_TOKEN(token_type);
 
-		//Keep processng the same token until its done
-		while (!eei_parse_token(parser, &token));
+		eei_parse_token(parser, &token);
 	}
 
-	//This should never happen and indicates an undetected discrepancy during parsing
-	if (parser->stack.top != 1)
+	if (parser->stack.top || (parser->status != ee_parser_ok))
 		return -1;
 
 	return 0;

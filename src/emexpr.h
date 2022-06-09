@@ -120,6 +120,31 @@ typedef struct
 	ee_compilation_data_functions functions;
 } ee_compilation_data;
 
+//Status returned by the parser
+typedef enum
+{
+	//All is well
+	ee_parser_ok,
+
+	//A generic, unspedicied, error
+	ee_parser_error,
+
+	//Generic stack related error
+	ee_parser_stack_error,
+
+	//Run out of stack space
+	ee_parser_stack_overflow,
+
+	//Algorithmic error causing a prematurely empty stack
+	ee_parser_stack_underflow,
+
+	//A malformed expression was parsed with an unspecified error
+	ee_parser_expression,
+
+	//The expression has an unmatched end delimiter
+	ee_parser_expression_unmatched_end,
+} ee_parser_reply;
+
 
 //A semi-opaque type to hold compiled data and the execution environment
 //------
