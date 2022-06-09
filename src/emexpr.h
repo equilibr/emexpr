@@ -132,13 +132,21 @@ typedef enum
 	//Generic stack related error
 	ee_parser_stack_error,
 
-	//Run out of stack space
-	ee_parser_stack_overflow,
-
 	//Algorithmic error causing a prematurely empty stack
 	ee_parser_stack_underflow,
 
-	//A malformed expression was parsed with an unspecified error
+	//A general memory problem
+	//All enums up to ee_parser_expression indicate that
+	//	the expression was too complex for the allocated memory.
+	ee_parser_memory,
+
+	//Run out of stack space
+	ee_parser_stack_overflow,
+
+	//A malformed expression was parsed with an unspecified error.
+	//Any enumerator after this indicates only various expression errors,
+	//	thus the parser reply could be tested with ">" to differentiate between
+	//	erroneous expressions and problems with the parser.
 	ee_parser_expression,
 
 	//The expression has an unmatched end delimiter

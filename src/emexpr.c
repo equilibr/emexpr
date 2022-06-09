@@ -920,6 +920,7 @@ typedef struct
 typedef struct eei_parser_
 {
 	eei_parser_stack stack;
+	eei_vm_environment vm;
 	const ee_compilation_data * data;
 
 	eei_parser_token error_token;
