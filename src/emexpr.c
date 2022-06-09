@@ -225,11 +225,6 @@ eei_token_type eei_lexer_next_token(eei_lexer_state * state)
 	return eei_token_error;
 }
 
-//Parser forward declarations
-//---------------------------
-typedef struct eei_parser_stack_ eei_parser_stack;
-typedef struct eei_parser_node_ eei_parser_node;
-
 //Parser rules
 //------------
 
@@ -269,8 +264,12 @@ typedef int eei_precedence;
 //	Next - the rule type to expected next
 typedef unsigned int eei_rule_description;
 
-//typedef ee_parser_reply (*eei_rule_handler)(eei_parser * parser, const struct eei_parser_node_ * node);
-typedef void (*eei_rule_handler)(void);
+//Forward declarations for the handler
+typedef struct eei_parser_ eei_parser;
+typedef struct eei_parser_node_ eei_parser_node;
+
+//Rule handler
+typedef ee_parser_reply (*eei_rule_handler)(eei_parser * parser, const eei_parser_node * node);
 
 //A rule table item to hold rules and their handler functions
 typedef struct
@@ -626,7 +625,7 @@ int eei_find_end_rule(eei_token token, eei_rule_description rule)
 //Parser stack
 //------------
 
-typedef struct
+typedef struct eei_parser_node_
 {
 	//The rule being processed
 	const eei_rule_item * rule;
@@ -918,7 +917,7 @@ typedef struct
 	const ee_char_type * end;
 } eei_parser_token;
 
-typedef struct
+typedef struct eei_parser_
 {
 	eei_parser_stack stack;
 	const ee_compilation_data * data;
@@ -1037,25 +1036,26 @@ static inline ee_parser_reply eei_parse_pushGroupRule(
 	return eei_parse_error(parser, eei_stack_push(&parser->stack, &node), token);
 }
 
-void eei_parse_doneNode(eei_parser * parser, const eei_parser_node * node)
+ee_parser_reply eei_parse_doneNode(eei_parser * parser, const eei_parser_node * node)
 {
 	//Test for a handler function
-	if (!node->rule->handler)
-		return;
+	if (node->rule->handler)
+		return node->rule->handler(parser, node);
 
-	node->rule->handler();
+	return ee_parser_ok;
 }
 
-void eei_parse_done(eei_parser * parser)
+ee_parser_reply eei_parse_done(eei_parser * parser)
 {
-	//Attach the current node as a child to the parent node
+	//Process the top node
 
 	eei_parser_node node;
+	const ee_parser_reply reply = eei_parse_pop(parser, &node);
 
-	if (eei_parse_pop(parser, &node) != ee_parser_ok)
-		return;
+	if (reply != ee_parser_ok)
+		return reply;
 
-	eei_parse_doneNode(parser, &node);
+	return eei_parse_doneNode(parser, &node);
 }
 
 static inline void eei_parse_parsePrefix(
