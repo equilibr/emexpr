@@ -3,6 +3,9 @@ CONFIG += console
 CONFIG -= app_bundle
 CONFIG -= qt
 
+QMAKE_CFLAGS += -std=c99 -ffreestanding
+#QMAKE_CFLAGS += -pedantic-errors
+
 SOURCES += \
 	src/emexpr.c \
 	test/main.c

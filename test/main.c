@@ -23,10 +23,12 @@ int subneg(int arity, const ee_variable actuals, ee_variable result)
 int main()
 {
 	static const char * expression = "1 + 2";
+
+	ee_data_size sizes;
 	ee_environment_header header;
 
-	int estimate = ee_guestimate(expression, &header);
-	printf("%d : %s\n",estimate, expression);
+	ee_parser_reply reply = ee_guestimate(expression, &sizes);
+	printf("%d : %s\n",sizes.full_environment_size, expression);
 
 	//Locally allocated data pool
 	union
@@ -62,7 +64,7 @@ int main()
 
 	memset(&environment.header, 0, sizeof(ee_environment_header));
 
-	int compiled = ee_compile(expression, &environment.header, &data);
+	int compiled = ee_compile(expression, &sizes, &environment.header, &data);
 	printf("Compiled: %d\n", compiled);
 
 	ee_variable_type result;

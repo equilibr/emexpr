@@ -166,18 +166,72 @@ typedef enum
 } ee_parser_reply;
 
 
-//A semi-opaque type to hold compiled data and the execution environment
-//------
+//Holds size calculations from the guestimator and compilator
+typedef struct
+{
+	//Maximum sizes, in bytes, for allocations
+	//It is assumed that memory is allocated with
+	//	the correct alignment for each datum
+
+	//Data for the compilation, used only by ee_compile.
+	//Aligned as ee_compilation_header.
+	//Calculated by ee_guestimate.
+	int compilation_size;
+
+	//Data for the execution environment, used by ee_compile and ee_evaluate.
+	//Aligned as ee_environment_header.
+	//Calculated by ee_guestimate.
+	//ee_compile will recalculate this and shrink to the actual size used.
+	int environment_size;
+
+	//Data for the runtime stack, used only by ee_evaluate.
+	//Aligned as ee_variable, when allocated separately.
+	//Calculated by ee_guestimate.
+	//ee_compile will recalculate this and shrink to the actual size used.
+	//This can be allocated as part of the execution environment or separately
+	int stack_size;
+
+	//Data for the execution environment, used by ee_compile and ee_evaluate.
+	//Aligned as ee_environment_header.
+	//Calculated by ee_guestimate.
+	//ee_compile will recalculate this and shrink to the actual size used.
+	//This can be used instead of environment_size & stack_size when
+	//	the runtime stack is allocated inside the execution environment.
+	//This is just the sum of environment_size & stack_size taking into account alignment of the latter.
+	int full_environment_size;
+
+
+	//Counts of the various elements
+	//Used and updated by ee_compile
+
+	int constants;
+	int variables;
+	int functions;
+	int instructions;
+	int compilation_stack;
+	int runtime_stack;
+} ee_data_size;
 
 //Basic allocation element for the environment
 typedef int ee_environment_element;
 
-//Transparent header of the environment
+//Semi-transparent header of the compilation environment
 typedef struct
 {
-	//Number of constants, of ee_variable_type elements
-	//TODO: Move this to eei_vm_environment
-	int constants;
+	int flags;
+
+	ee_parser_reply reply;
+	ee_char_type * error_token_start;
+	ee_char_type * error_token_end;
+
+	//Start of internal data. Used to simplify alignment.
+	ee_environment_element internal[1];
+} ee_compilation_header;
+
+//Semi-transparent header of the environment
+typedef struct
+{
+	int flags;
 
 	//Pre-allocated runtime stack
 	//This can be modified to any correctly aligned pointer
@@ -187,23 +241,27 @@ typedef struct
 	//Max runtime stack depth, in count of of ee_variable_type elements
 	int max_stack;
 
-	//Additional internal data, in ee_environment_element
-	int	internal;
+	//Start of internal data. Used to simplify alignment.
+	ee_environment_element internal[1];
 } ee_environment_header;
 
+//Typedef to simply the interface
 typedef ee_environment_header * ee_environment;
 
 
-//Anayze the expression and return an (upper bound) estimate of needed memory, in bytes.
-//Returns non-positive in case of any error
-//A negative number is the estimate up until the error was encountered
-int ee_guestimate(const ee_char_type * expression, ee_environment_header * header);
-
-//Compile the expression, using the pre-allocated environment
-//Returns the actual memory used, in ee_environment_element.
-//The environment can be resized and moved in memory as needed.
-int ee_compile(
+//Anayze the expression and estimate the upper bound of needed memory, in bytes.
+ee_parser_reply ee_guestimate(
 		const ee_char_type * expression,
+		ee_data_size * size);
+
+//Compile the expression, using the pre-allocated environment.
+//Will calculate the actual memory used and update "size" accordingly.
+//Memory requierements will NEVER grow and an error will be returned in case
+//	the allocated memory is not enough.
+//The environment can be resized and moved in memory as needed.
+ee_parser_reply ee_compile(
+		const ee_char_type * expression,
+		ee_data_size * size,
 		ee_environment environment,
 		const ee_compilation_data * data);
 

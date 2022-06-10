@@ -1599,6 +1599,9 @@ int eei_vm_execute(const eei_vm_environment * vm_environment)
 //External API
 //------------
 
+//Helper macro to calculate alignment of a type
+#define alignof(type) ((int)&((struct { char c; type d; } *)0)->d)
+
 //Helper structure to simplify alignment management
 typedef struct
 {
@@ -1609,7 +1612,7 @@ typedef struct
 	int variables;
 	int functions;
 
-	ee_environment_element data[0];
+	ee_environment_element data[1];
 } ee_environment_struct;
 
 
@@ -1624,7 +1627,7 @@ int ee_vm_init(
 }
 
 
-int ee_guestimate(const ee_char_type * expression, ee_environment_header *header)
+ee_parser_reply ee_guestimate(const ee_char_type * expression, ee_data_size * size)
 {
 	int identifiers = 0;
 	int numbers = 0;
@@ -1675,24 +1678,44 @@ int ee_guestimate(const ee_char_type * expression, ee_environment_header *header
 
 	} while ((token_type != eei_token_eof) && (token_type != eei_token_error));
 
-	header->constants = numbers;
 
-	//Runtime maximum stack size
-	header->max_stack = actuals + groups * 2 + operators + identifiers;
+	//Guestimate the number of elements
 
-	//Concrete syntax tree maximum depth
-	header->internal = identifiers * 2 + groups;
+	size->constants = numbers;
+	size->variables = identifiers;
+	size->functions = identifiers + operators;
+	size->instructions = numbers + identifiers + operators;
+	size->instructions *= size->instructions;
+	size->compilation_stack = numbers + identifiers + operators * 2 + groups * 2;
+	size->runtime_stack = actuals + groups * 2 + operators + identifiers;
 
-	estimate = sizeof(ee_environment_header);
-	estimate += sizeof(ee_variable_type) * numbers;
-	estimate += sizeof(ee_variable_type*) * identifiers;
-	estimate += sizeof(ee_variable_type) * header->max_stack;
-	estimate += sizeof(ee_environment_element) * header->internal;
+	//Calculate the sizes
 
-	return (token_type == eei_token_error) ? -estimate : estimate;
+	size->compilation_size =
+			sizeof(ee_compilation_header)
+			+ alignof(eei_parser) + sizeof(eei_parser)
+			+ alignof(eei_parser_node) + sizeof(eei_parser_node) * size->compilation_stack;
+
+	size->environment_size =
+			sizeof(ee_environment_struct)
+			+ alignof(ee_variable_type) + sizeof(ee_variable_type) * size->constants
+			+ alignof(ee_variable_type) + sizeof(ee_variable_type) * size->variables
+			+ alignof(ee_function) + sizeof(ee_function) * size->functions
+			+ alignof(eei_vm_bytecode) + sizeof(eei_vm_bytecode) * size->instructions;
+
+	size->stack_size =
+			sizeof(ee_variable_type) * size->runtime_stack;
+
+	size->full_environment_size =
+			size->environment_size
+			+ alignof(ee_variable_type) + size->stack_size;
+
+	return (token_type == eei_token_error) ? ee_parser_error : ee_parser_ok;
 }
 
-int ee_compile(const ee_char_type * expression,
+ee_parser_reply ee_compile(
+		const ee_char_type * expression,
+		ee_data_size *size,
 		ee_environment environment,
 		const ee_compilation_data *data)
 {
