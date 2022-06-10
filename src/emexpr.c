@@ -1283,7 +1283,7 @@ void eei_parse_foldEndDilimiter(
 	//	to the previous one, since the rule that created the current group is,
 	//	in itself, an element of the previous one, and must be folded as part of that.
 
-	group = parser->stack.top;
+	group = parser->stack.top - 1;
 
 	//Special handling for the SOF token
 	if (!group)
@@ -1383,6 +1383,11 @@ void eei_parse_init(eei_parser * parser, const ee_char_type * expression)
 	eei_parser_node node;
 	eei_parser_token token;
 
+	parser->status = ee_parser_ok;
+	parser->error_token.token = MAKE_SIMPLE_TOKEN(eei_token_sof);
+	parser->error_token.start = expression;
+	parser->error_token.end = expression;
+
 	node.token_start = expression;
 	node.token_end = expression;
 	node.precedence = 0;
@@ -1397,11 +1402,6 @@ void eei_parse_init(eei_parser * parser, const ee_char_type * expression)
 	token.start = expression;
 	token.end = expression;
 	eei_parse_pushGroupRule(parser, &token);
-
-	parser->status = ee_parser_ok;
-	parser->error_token.token = MAKE_SIMPLE_TOKEN(eei_token_sof);
-	parser->error_token.start = expression;
-	parser->error_token.end = expression;
 }
 
 void eei_parse_expression(eei_parser * parser, const ee_char_type * expression)
@@ -1411,7 +1411,7 @@ void eei_parse_expression(eei_parser * parser, const ee_char_type * expression)
 
 	eei_parse_init(parser, expression);
 
-	while (parser->status == ee_parser_ok)
+	while ((parser->status == ee_parser_ok) && (parser->stack.top))
 	{
 		eei_parser_token token;
 		const eei_token_type token_type = eei_lexer_next_token(&lexer_state);
@@ -1683,7 +1683,7 @@ ee_parser_reply ee_guestimate(const ee_char_type * expression, ee_data_size * si
 	size->functions = identifiers + operators;
 	size->instructions = numbers + identifiers + operators;
 	size->instructions *= size->instructions;
-	size->compilation_stack = numbers + identifiers + operators * 2 + groups * 2;
+	size->compilation_stack = 2 + numbers + identifiers + operators * 2 + groups * 2;
 	size->runtime_stack = actuals + groups * 2 + operators + identifiers;
 
 	//Calculate the sizes
