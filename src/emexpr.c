@@ -287,6 +287,7 @@ typedef struct
 ee_parser_reply eei_rule_handler_number(eei_parser * parser, const eei_parser_node * node);
 ee_parser_reply eei_rule_handler_prefix(eei_parser * parser, const eei_parser_node * node);
 ee_parser_reply eei_rule_handler_infix(eei_parser * parser, const eei_parser_node * node);
+ee_parser_reply eei_rule_handler_postfix(eei_parser * parser, const eei_parser_node * node);
 ee_parser_reply eei_rule_handler_comma(eei_parser * parser, const eei_parser_node * node);
 
 //Parser rules
@@ -538,7 +539,7 @@ static const eei_rule_item eei_parser_infix_rules[] =
 
 static const eei_rule_item eei_parser_postfix_rules[] =
 {
-	STATE(MAKE_POSTFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_identifier), eei_precedence_postfix)),
+	HANDLE(MAKE_POSTFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_identifier), eei_precedence_postfix), eei_rule_handler_postfix),
 
 	STATE(MAKE_SENTINEL_RULE())
 };
@@ -1156,20 +1157,19 @@ ee_parser_reply eei_parse_symbols_init(
 	parser->symboltable.functions = 0;
 	if (data->functions.meta.names && data->functions.data)
 	{
-
 			const ee_char_type * const * names = data->functions.meta.names;
 			ee_compilation_data_function * values = data->functions.data;
 
 			if (data->functions.meta.count == 0)
 				//No actual limit
-				while (*names && values)
+				while (*names && values->function)
 				{
 					parser->symboltable.functions++;
 					names++;
 					values++;
 				}
 			else
-				while (*names && values && (parser->symboltable.functions < data->functions.meta.count))
+				while (*names && values->function && (parser->symboltable.functions < data->functions.meta.count))
 				{
 					parser->symboltable.functions++;
 					names++;
@@ -1581,6 +1581,7 @@ void eei_parse_token(eei_parser * parser, eei_parser_token * token)
 		return;
 
 	//The current token is not any expected token - it must be some END delimiter
+//	eei_parse_foldPrefix(parser);
 	eei_parse_foldEndDilimiter(parser, token);
 }
 
@@ -1672,6 +1673,17 @@ ee_parser_reply eei_rule_handler_infix(eei_parser * parser, const eei_parser_nod
 
 	return eei_vmmake_execute_functions(&parser->vm, op, 2);
 }
+
+ee_parser_reply eei_rule_handler_postfix(eei_parser * parser, const eei_parser_node * node)
+{
+	ee_function op = eei_parse_symbols_get_function(parser, 1, node);
+
+	if (!op)
+		return ee_parser_postfix_not_implemented;
+
+	return eei_vmmake_execute_functions(&parser->vm, op, 1);
+}
+
 
 ee_parser_reply eei_rule_handler_comma(eei_parser * parser, const eei_parser_node * node)
 {
@@ -1784,6 +1796,9 @@ ee_evaluator_reply eei_vm_execute(const eei_vm_environment * vm_environment)
 				//Adjust the stack by the arity so the function would receive
 				//	the correct actuals
 				rt.stack_top -= rt.arity;
+
+				if (rt.stack_top < vm_environment->stack)
+					return ee_evaluator_stack_underflow;
 
 				//Call the function
 				error =
@@ -2032,6 +2047,7 @@ ee_parser_reply ee_compile(
 	eei_parse_expression(&parser, expression);
 
 	//Fill back data
+	full_env->instruction_count = parser.vm.current.instructions;
 
 	//TODO: Compress data
 
