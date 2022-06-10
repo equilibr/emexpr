@@ -14,7 +14,8 @@ If you don't really care about call stack depth, dynamic allocations, memory foo
 - Designed for low-resource embedded systems. 
 - Keeps the call stack as small as possible.
 - C99 with **no dependencies**. Not even `math.h` and `memory.h`.
-- Single source file and header file.
+- Compiles with: -std=c99 -ffreestanding
+- Single source file and header file for the core functionality.
 - Simple and extremely fast.
 - Does **not** require usage of heap memory.
 - A parsed expression can be evaluated multiple times with no added overhead.

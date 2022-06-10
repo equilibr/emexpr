@@ -221,8 +221,8 @@ typedef struct
 	int flags;
 
 	ee_parser_reply reply;
-	ee_char_type * error_token_start;
-	ee_char_type * error_token_end;
+	const ee_char_type * error_token_start;
+	const ee_char_type * error_token_end;
 
 	//Start of internal data. Used to simplify alignment.
 	ee_environment_element internal[1];

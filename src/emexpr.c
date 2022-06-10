@@ -1404,7 +1404,7 @@ void eei_parse_init(eei_parser * parser, const ee_char_type * expression)
 	parser->error_token.end = expression;
 }
 
-int eei_parse_expression(eei_parser * parser, const ee_char_type * expression)
+void eei_parse_expression(eei_parser * parser, const ee_char_type * expression)
 {
 	eei_lexer_state lexer_state;
 	lexer_state.head = expression;
@@ -1428,10 +1428,8 @@ int eei_parse_expression(eei_parser * parser, const ee_char_type * expression)
 		eei_parse_token(parser, &token);
 	}
 
-	if (parser->stack.top || (parser->status != ee_parser_ok))
-		return -1;
-
-	return 0;
+	if (parser->stack.top && (parser->status == ee_parser_ok))
+		parser->status = ee_parser_error;
 }
 
 
@@ -1634,7 +1632,6 @@ ee_parser_reply ee_guestimate(const ee_char_type * expression, ee_data_size * si
 	int actuals = 0;
 	int groups = 0;
 	int operators = 0;
-	int estimate = 0;
 
 	eei_lexer_state state;
 	eei_token_type token_type = eei_token_eof;
@@ -1693,7 +1690,6 @@ ee_parser_reply ee_guestimate(const ee_char_type * expression, ee_data_size * si
 
 	size->compilation_size =
 			sizeof(ee_compilation_header)
-			+ alignof(eei_parser) + sizeof(eei_parser)
 			+ alignof(eei_parser_node) + sizeof(eei_parser_node) * size->compilation_stack;
 
 	size->environment_size =
@@ -1720,15 +1716,72 @@ ee_parser_reply ee_compile(
 		ee_environment environment,
 		const ee_compilation_data *data)
 {
-	//TODO: Prepare symbol tables
-	//TODO: Correctly setup the parser structure from the environment
-	eei_parser_node stack[64];
 	eei_parser parser;
-	parser.stack.stack = stack;
-	parser.stack.size = 64;
+
+	//Setup the parser stack memory
+
+	char * ptr = (char *)&compilation->internal[0];
+	while ((unsigned long int)ptr % alignof(eei_parser_node))
+		ptr++;
+
+	parser.stack.stack = (eei_parser_node*)ptr;
+	parser.stack.size = size->compilation_stack;
 	parser.stack.top = 0;
 
-	return eei_parse_expression(&parser, expression);
+
+	//Setup the VM tables memory
+
+	parser.vm.current.constants = 0;
+	parser.vm.current.variables = 0;
+	parser.vm.current.functions = 0;
+	parser.vm.current.instructions = 0;
+	parser.vm.current.stack = 0;
+
+	parser.vm.max.constants = size->constants;
+	parser.vm.max.variables = size->variables;
+	parser.vm.max.functions = size->functions;
+	parser.vm.max.instructions = size->instructions;
+	parser.vm.max.stack = size->runtime_stack;
+
+	//Constants
+	ptr = (char *)&environment->internal[0];
+	while ((unsigned long int)ptr % alignof(ee_variable_type))
+		ptr++;
+
+	parser.vm.data.constants = (ee_variable_type*)ptr;
+	ptr += sizeof(ee_variable_type) * parser.vm.max.constants;
+
+	//Variables
+	while ((unsigned long int)ptr % alignof(const ee_variable_type*))
+		ptr++;
+
+	parser.vm.data.variables = (const ee_variable_type**)ptr;
+	ptr += sizeof(const ee_variable_type*) * parser.vm.max.variables;
+
+	//Functions
+	while ((unsigned long int)ptr % alignof(ee_function))
+		ptr++;
+
+	parser.vm.data.functions = (ee_function*)ptr;
+	ptr += sizeof(ee_function) * parser.vm.max.functions;
+
+	//Instructions
+	while ((unsigned long int)ptr % alignof(eei_vm_bytecode))
+		ptr++;
+
+	parser.vm.data.instructions = (eei_vm_bytecode*)ptr;
+	ptr += sizeof(eei_vm_bytecode) * parser.vm.max.instructions;
+
+	//TODO: Prepare symbol tables
+	parser.data = data;
+
+	eei_parse_expression(&parser, expression);
+
+	compilation->reply = parser.status;
+	compilation->error_token_start = parser.error_token.start;
+	compilation->error_token_end = parser.error_token.end;
+
+	return parser.status;
 }
 
 int ee_evaluate(ee_environment environment, ee_variable result)
