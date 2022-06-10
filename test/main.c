@@ -98,14 +98,14 @@ int test_constant(const char * expression)
 
 	reply = ee_guestimate(expression, &sizes);
 	printf(
-				"status: %d; compile size: %04d; execute size: %04d;\n",
+				"guesstimate status: %d; compile: %04d; execute: %04d;\n",
 				reply,
 				sizes.compilation_size,
 				sizes.full_environment_size);
 
 	reply = ee_compile(expression, &sizes, &global_parser.header, &global_environment.header, &compilation_data);
 	printf(
-				"status: %d; compile size: %04d; execute size: %04d;\n",
+				"compilation status: %d; compile: %04d; execute: %04d;\n",
 				reply,
 				sizes.compilation_size,
 				sizes.full_environment_size);
@@ -113,7 +113,7 @@ int test_constant(const char * expression)
 	ee_variable_type result = 0;
 	ee_evaluator_reply ereply = ee_evaluate(&global_environment.header, &result);
 	printf(
-				"status: %d; result: %g\n",
+				"evaluation  status: %d; result: %g\n",
 				ereply,
 				result);
 

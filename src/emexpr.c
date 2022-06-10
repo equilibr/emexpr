@@ -1637,6 +1637,26 @@ typedef struct
 	ee_environment_element data[1];
 } ee_environment_struct;
 
+void eei_guestimate_calculate_sizes(ee_data_size * size)
+{
+	size->compilation_size =
+			sizeof(ee_compilation_header)
+			+ alignof(eei_parser_node) + sizeof(eei_parser_node) * size->compilation_stack;
+
+	size->environment_size =
+			sizeof(ee_environment_struct)
+			+ alignof(ee_variable_type) + sizeof(ee_variable_type) * size->constants
+			+ alignof(ee_variable_type) + sizeof(ee_variable_type) * size->variables
+			+ alignof(ee_function) + sizeof(ee_function) * size->functions
+			+ alignof(eei_vm_bytecode) + sizeof(eei_vm_bytecode) * size->instructions;
+
+	size->stack_size =
+			sizeof(ee_variable_type) * size->runtime_stack;
+
+	size->full_environment_size =
+			size->environment_size
+			+ alignof(ee_variable_type) + size->stack_size;
+}
 
 char * eei_environment_init(
 		ee_environment_struct * environment,
@@ -1741,27 +1761,9 @@ ee_parser_reply ee_guestimate(const ee_char_type * expression, ee_data_size * si
 	size->instructions = numbers + identifiers + operators;
 	size->instructions *= size->instructions;
 	size->compilation_stack = 2 + numbers + identifiers + operators * 2 + groups * 2;
-	size->runtime_stack = actuals + groups * 2 + operators + identifiers;
+	size->runtime_stack = numbers + actuals + groups * 2 + operators + identifiers;
 
-	//Calculate the sizes
-
-	size->compilation_size =
-			sizeof(ee_compilation_header)
-			+ alignof(eei_parser_node) + sizeof(eei_parser_node) * size->compilation_stack;
-
-	size->environment_size =
-			sizeof(ee_environment_struct)
-			+ alignof(ee_variable_type) + sizeof(ee_variable_type) * size->constants
-			+ alignof(ee_variable_type) + sizeof(ee_variable_type) * size->variables
-			+ alignof(ee_function) + sizeof(ee_function) * size->functions
-			+ alignof(eei_vm_bytecode) + sizeof(eei_vm_bytecode) * size->instructions;
-
-	size->stack_size =
-			sizeof(ee_variable_type) * size->runtime_stack;
-
-	size->full_environment_size =
-			size->environment_size
-			+ alignof(ee_variable_type) + size->stack_size;
+	eei_guestimate_calculate_sizes(size);
 
 	return (token_type == eei_token_error) ? ee_parser_error : ee_parser_ok;
 }
@@ -1828,6 +1830,12 @@ ee_parser_reply ee_compile(
 	//Report the actual stack usage
 	environment->max_stack = parser.vm.max.stack;
 
+	size->constants = parser.vm.current.constants;
+	size->variables = parser.vm.current.variables;
+	size->functions = parser.vm.current.functions;
+	size->instructions = parser.vm.current.instructions;
+	size->runtime_stack = parser.vm.max.stack;
+	eei_guestimate_calculate_sizes(size);
 
 	compilation->reply = parser.status;
 	compilation->error_token_start = parser.error_token.start;
