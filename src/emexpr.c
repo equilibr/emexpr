@@ -666,6 +666,9 @@ typedef struct
 	//Location of the current stack top
 	//This always points to the element ABOVE the top
 	int top;
+
+	//The highest top seen
+	int high;
 } eei_parser_stack;
 
 ee_parser_reply eei_stack_copynode(eei_parser_node * dst, const eei_parser_node * src)
@@ -693,6 +696,9 @@ ee_parser_reply eei_stack_push(eei_parser_stack * stack, const eei_parser_node *
 
 	eei_stack_copynode(&stack->stack[stack->top], node);
 	stack->top++;
+
+	if (stack->high < stack->top)
+		stack->high = stack->top;
 
 	return ee_parser_ok;
 }
@@ -1787,6 +1793,7 @@ ee_parser_reply ee_compile(
 	parser.stack.stack = (eei_parser_node*)ptr;
 	parser.stack.size = size->compilation_stack;
 	parser.stack.top = 0;
+	parser.stack.high = 0;
 
 	parser.vm.current.constants = 0;
 	parser.vm.current.variables = 0;
@@ -1827,8 +1834,11 @@ ee_parser_reply ee_compile(
 
 	environment->stack = (ee_variable_type *)ptr;
 
-	//Report the actual stack usage
+	//Report the actual runtime stack usage
 	environment->max_stack = parser.vm.max.stack;
+
+	//Report the actual compilation stack usage
+	size->compilation_stack = parser.stack.high;
 
 	size->constants = parser.vm.current.constants;
 	size->variables = parser.vm.current.variables;
