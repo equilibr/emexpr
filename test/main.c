@@ -96,10 +96,20 @@ int test_empty()
 	memset(&compilation_data, 0, sizeof(ee_compilation_data));
 
 	reply = ee_guestimate(expression, &sizes);
-	printf("status: %d; size: %04d; # %s\n",reply,sizes.full_environment_size, expression);
+	printf(
+				"status: %d; compile size: %04d; execute size: %04d; # %s\n",
+				reply,
+				sizes.compilation_size,
+				sizes.full_environment_size,
+				expression);
 
 	reply = ee_compile(expression, &sizes, &global_parser.header, &global_environment.header, &compilation_data);
-	printf("status: %d; size: %04d\n",reply,sizes.full_environment_size);
+	printf(
+				"status: %d; compile size: %04d; execute size: %04d; # %s\n",
+				reply,
+				sizes.compilation_size,
+				sizes.full_environment_size,
+				expression);
 
 	ee_variable_type result;
 	ee_evaluate(&global_environment.header, &result);

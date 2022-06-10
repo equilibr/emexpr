@@ -1594,8 +1594,8 @@ int eei_vm_execute(const eei_vm_environment * vm_environment)
 }
 
 
-//External API
-//------------
+//External API utility
+//--------------------
 
 //Helper macro to calculate alignment of a type
 #define alignof(type) ((int)&((struct { char c; type d; } *)0)->d)
@@ -1605,25 +1605,62 @@ typedef struct
 {
 	ee_environment_header header;
 
-	//Counts of the various elements
+	//Byte offsets from "data" for the various tables
 	int constants;
 	int variables;
 	int functions;
+	int instructions;
+
+	//Count of instructions
+	int instruction_count;
 
 	ee_environment_element data[1];
 } ee_environment_struct;
 
 
-//Initialize the VM from the environemt
-int ee_vm_init(
-		const ee_environment_struct * environment,
-		eei_vm_environment * vm_environment,
-		eei_vm_runtime * vm_runtime)
+char * eei_environment_init(
+		ee_environment_struct * environment,
+		const ee_data_size * size)
 {
-	vm_runtime->stack_top = environment->header.stack;
+	//Calculate the memory locations of all tables
 
+	char * base = (char *)&environment->data[0];
+	char * ptr = base;
+
+	//Constants
+	while ((unsigned long int)ptr % alignof(ee_variable_type))
+		ptr++;
+
+	environment->constants = (int)(ptr - base);
+	ptr += sizeof(ee_variable_type) * size->constants;
+
+	//Variables
+	while ((unsigned long int)ptr % alignof(const ee_variable_type*))
+		ptr++;
+
+	environment->variables = (int)(ptr - base);
+	ptr += sizeof(const ee_variable_type*) * size->variables;
+
+	//Functions
+	while ((unsigned long int)ptr % alignof(ee_function))
+		ptr++;
+
+	environment->functions = (int)(ptr - base);
+	ptr += sizeof(ee_function) * size->functions;
+
+	//Instructions
+	while ((unsigned long int)ptr % alignof(eei_vm_bytecode))
+		ptr++;
+
+	environment->instructions = (int)(ptr - base);
+	ptr += sizeof(eei_vm_bytecode) * size->instructions;
+
+	return ptr;
 }
 
+
+//External API
+//------------
 
 ee_parser_reply ee_guestimate(const ee_char_type * expression, ee_data_size * size)
 {
@@ -1711,11 +1748,12 @@ ee_parser_reply ee_guestimate(const ee_char_type * expression, ee_data_size * si
 
 ee_parser_reply ee_compile(
 		const ee_char_type * expression,
-		ee_data_size *size,
+		ee_data_size * size,
 		ee_compilation_header * compilation,
 		ee_environment environment,
 		const ee_compilation_data *data)
 {
+	ee_environment_struct * full_env = (ee_environment_struct *)environment;
 	eei_parser parser;
 
 	//Setup the parser stack memory
@@ -1728,54 +1766,48 @@ ee_parser_reply ee_compile(
 	parser.stack.size = size->compilation_stack;
 	parser.stack.top = 0;
 
-
-	//Setup the VM tables memory
-
 	parser.vm.current.constants = 0;
 	parser.vm.current.variables = 0;
 	parser.vm.current.functions = 0;
 	parser.vm.current.instructions = 0;
-	parser.vm.current.stack = 0;
 
 	parser.vm.max.constants = size->constants;
 	parser.vm.max.variables = size->variables;
 	parser.vm.max.functions = size->functions;
 	parser.vm.max.instructions = size->instructions;
-	parser.vm.max.stack = size->runtime_stack;
 
-	//Constants
-	ptr = (char *)&environment->internal[0];
-	while ((unsigned long int)ptr % alignof(ee_variable_type))
-		ptr++;
+	//Calculate the VM tables memory locations
+	ptr = eei_environment_init(full_env, size);
+	full_env->instruction_count = parser.vm.max.instructions;
 
-	parser.vm.data.constants = (ee_variable_type*)ptr;
-	ptr += sizeof(ee_variable_type) * parser.vm.max.constants;
+	//Setup the VM tables memory
+	parser.vm.data.constants = (ee_variable_type*)((char *)&full_env->data[0] + full_env->constants);
+	parser.vm.data.variables = (const ee_variable_type**)((char *)&full_env->data[0] + full_env->variables);
+	parser.vm.data.functions = (ee_function*)((char *)&full_env->data[0] + full_env->functions);
+	parser.vm.data.instructions = (eei_vm_bytecode*)((char *)&full_env->data[0] + full_env->instructions);
 
-	//Variables
-	while ((unsigned long int)ptr % alignof(const ee_variable_type*))
-		ptr++;
-
-	parser.vm.data.variables = (const ee_variable_type**)ptr;
-	ptr += sizeof(const ee_variable_type*) * parser.vm.max.variables;
-
-	//Functions
-	while ((unsigned long int)ptr % alignof(ee_function))
-		ptr++;
-
-	parser.vm.data.functions = (ee_function*)ptr;
-	ptr += sizeof(ee_function) * parser.vm.max.functions;
-
-	//Instructions
-	while ((unsigned long int)ptr % alignof(eei_vm_bytecode))
-		ptr++;
-
-	parser.vm.data.instructions = (eei_vm_bytecode*)ptr;
-	ptr += sizeof(eei_vm_bytecode) * parser.vm.max.instructions;
+	//Reset the stack info since the parser will count the actual stack usage
+	parser.vm.max.stack = 0;
+	parser.vm.current.stack = 0;
 
 	//TODO: Prepare symbol tables
 	parser.data = data;
 
 	eei_parse_expression(&parser, expression);
+
+	//Fill back data
+
+	//TODO: Compress data
+
+	//Find the location of the stack if it is to be allocated inside the environment
+	while ((unsigned long int)ptr % alignof(ee_variable_type))
+		ptr++;
+
+	environment->stack = (ee_variable_type *)ptr;
+
+	//Report the actual stack usage
+	environment->max_stack = parser.vm.max.stack;
+
 
 	compilation->reply = parser.status;
 	compilation->error_token_start = parser.error_token.start;
@@ -1787,11 +1819,22 @@ ee_parser_reply ee_compile(
 int ee_evaluate(ee_environment environment, ee_variable result)
 {
 	eei_vm_environment vm_environment;
-	int error;
 
-	//TODO: Fill the VM environment
+	//Fill the VM environment
+	{
+		ee_environment_struct * full_env = (ee_environment_struct *)environment;
 
-	error = eei_vm_execute(&vm_environment);
+		//Setup the VM tables memory
+		vm_environment.constants = (ee_variable_type*)((char *)&full_env->data[0] + full_env->constants);
+		vm_environment.variables = (const ee_variable_type**)((char *)&full_env->data[0] + full_env->variables);
+		vm_environment.functions = (ee_function*)((char *)&full_env->data[0] + full_env->functions);
+		vm_environment.instructions = (eei_vm_bytecode*)((char *)&full_env->data[0] + full_env->instructions);
+
+		vm_environment.stack = full_env->header.stack;
+		vm_environment.instruction_count = full_env->instruction_count;
+	}
+
+	int error = eei_vm_execute(&vm_environment);
 
 	//Extract the top of the stack and return it as the result
 	*result = *vm_environment.stack;
