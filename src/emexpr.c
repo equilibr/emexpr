@@ -285,6 +285,7 @@ typedef struct
 //Parser rule handler forward declarations
 //----------------------------------------
 ee_parser_reply eei_rule_handler_number(eei_parser * parser, const eei_parser_node * node);
+ee_parser_reply eei_rule_handler_variable(eei_parser * parser, const eei_parser_node * node);
 ee_parser_reply eei_rule_handler_prefix(eei_parser * parser, const eei_parser_node * node);
 ee_parser_reply eei_rule_handler_infix(eei_parser * parser, const eei_parser_node * node);
 ee_parser_reply eei_rule_handler_postfix(eei_parser * parser, const eei_parser_node * node);
@@ -499,7 +500,7 @@ static const eei_rule_item eei_parser_prefix_rules[] =
 	STATE(MAKE_DELIMITED_PREFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_sof))),
 
 	HANDLE(MAKE_PREFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_number),0,eei_rule_infix), eei_rule_handler_number),
-	STATE(MAKE_PREFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_identifier),0,eei_rule_infix)),
+	HANDLE(MAKE_PREFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_identifier),0,eei_rule_infix), eei_rule_handler_variable),
 
 	//Grouping parens
 	STATE(MAKE_DELIMITED_PREFIX_RULE(MAKE_TOKEN(eei_token_delimiter,'('))),
@@ -1654,6 +1655,16 @@ ee_parser_reply eei_rule_handler_number(eei_parser * parser, const eei_parser_no
 	return eei_vmmake_load_constant(&parser->vm, state.number_integer);
 }
 
+ee_parser_reply eei_rule_handler_variable(eei_parser * parser, const eei_parser_node * node)
+{
+	ee_variable_type * var = eei_parse_symbols_get_variable(parser, node);
+
+	if (!var)
+		return ee_parser_unknown_variable;
+
+	return eei_vmmake_load_variable(&parser->vm, var);
+}
+
 ee_parser_reply eei_rule_handler_prefix(eei_parser * parser, const eei_parser_node * node)
 {
 	ee_function op = eei_parse_symbols_get_function(parser, 1, node);
@@ -2100,7 +2111,7 @@ ee_evaluator_reply ee_evaluate(ee_environment environment, ee_variable result)
 	//Extract the top of the stack and return it as the result
 	if (result)
 	{
-		//A result is expected by the stack is empty
+		//A result is expected but the stack is empty
 		if (reply == ee_evaluator_empty)
 			return ee_evaluator_stack_underflow;
 		else

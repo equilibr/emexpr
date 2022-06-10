@@ -155,6 +155,9 @@ typedef enum
 	//Run out of functions space
 	ee_parser_functions_overflow,
 
+	//A variable named by the expression is not provided
+	ee_parser_unknown_variable,
+
 	//A function used by the expression is not implemented
 	ee_parser_function_not_implemented,
 

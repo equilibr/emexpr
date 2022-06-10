@@ -36,6 +36,12 @@ int subneg(int arity, const ee_variable actuals, ee_variable result)
 	}
 }
 
+int plus(int arity, const ee_variable actuals, ee_variable result)
+{
+	*result = actuals[0] + actuals[1];
+	return 0;
+}
+
 int mul(int arity, const ee_variable actuals, ee_variable result)
 {
 	*result = actuals[0] * actuals[1];
@@ -59,13 +65,14 @@ int milli(int arity, const ee_variable actuals, ee_variable result)
 ee_compilation_data_function funcData[] = {
 	{subneg,1},
 	{subneg,2},
+	{plus,2},
 	{mul,2},
 	{mega,1},
 	{milli,1},
 	{0,0}
 };
 
-const char * funcNames[] = {"-","-","*","M","m"};
+const char * funcNames[] = {"-","-","+","*","M","m"};
 
 ee_variable_type var1, var2;
 
@@ -89,7 +96,7 @@ ee_compilation_data global_compilation_data =
 void test_print_sizes(const ee_data_size * sizes)
 {
 	printf(
-				"compile: %04d; execute: %04d; const: %04d; var: %04d; func: %04d; vm: %04d; stack: %04d;\n",
+				"compile: %04d; execute: %04d; const: %04d; var: %04d; func: %04d; vm: %04d; stack: %04d;",
 				sizes->compilation_size,
 				sizes->full_environment_size,
 				sizes->constants,
@@ -108,7 +115,7 @@ int test_expression(const char * expression)
 	memset(&global_parser.header, 0, sizeof(ee_compilation_header));
 	memset(&global_environment.header, 0, sizeof(ee_environment_header));
 
-	printf("%20s = ",expression);
+	printf("%10s = ",expression);
 
 	reply = ee_guestimate(expression, &sizes);
 //	printf("guesstimate status: %d; ",reply);
@@ -119,40 +126,46 @@ int test_expression(const char * expression)
 	{
 		printf("compilation status: %d; ",reply);
 		test_print_sizes(&sizes);
+		printf("\n");
 		return 1;
 	}
-//	printf("compilation status: %d; ",reply);
-//	test_print_sizes(&sizes);
 
 	ee_variable_type result = 0;
 	ee_evaluator_reply ereply = ee_evaluate(&global_environment.header, &result);
-	if (ereply)
+	if (reply || ereply > ee_evaluator_empty)
 	{
-		printf("\ncompilation status: %d; ",reply);
+		printf("compile: %d; eval: %d; ",reply, ereply);
 		test_print_sizes(&sizes);
-		printf(
-					"evaluation  status: %d; result: %g\n",
-					ereply,
-					result);
+		printf("\n");
+		return 1;
 	}
 	else
-			printf("%g\t\t(%d %d)\n", result, reply, ereply);
+			printf("%g\n", result);
 
 	return 0;
 }
 
 int main()
 {
-//	test_expression("");
-
-//	test_expression("2 * 2");
-//	test_expression("2 * -2");
-//	test_expression("-2 * -2");
-
+//	test_expression("1 m");
+//	test_expression("1 M * 1 m");
 //	return 0;
 
-	test_expression("1 m");
+	var1 = 1;
+	test_expression("a");
+	test_expression("a + 1");
+	var1 = 10;
+	test_expression("a");
+	test_expression("a * 2");
 	return 0;
+
+
+	test_expression("2 * 2");
+	test_expression("2 * -2");
+	test_expression("-2 * -2");
+	test_expression("2 * 4 + 4");
+	test_expression("2 + 3 * 4");
+	test_expression("(2 + 3) * 4");
 
 	test_expression("-1");
 	test_expression("1-1");
@@ -161,14 +174,20 @@ int main()
 	test_expression("1 - (-1--1)");
 
 	test_expression("1");
-	test_expression("()");
 	test_expression("(1)");
-	test_expression("(())");
+
 	test_expression("((1))");
+	return 0;
 
 
+	//TODO: Refuse incorrect grammar
 	test_expression("(1+");
 	test_expression(")1+");
+
+	//TODO: Mark empty expression during parsing!
+	test_expression("");
+	test_expression("()");
+	test_expression("(())");
 
 	return 0;
 }
