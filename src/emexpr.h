@@ -143,6 +143,18 @@ typedef enum
 	//Run out of stack space
 	ee_parser_stack_overflow,
 
+	//Run out of bytecode space
+	ee_parser_instrictions_overflow,
+
+	//Run out of constants space
+	ee_parser_constants_overflow,
+
+	//Run out of variables space
+	ee_parser_variables_overflow,
+
+	//Run out of functions space
+	ee_parser_functions_overflow,
+
 	//A malformed expression was parsed with an unspecified error.
 	//Any enumerator after this indicates only various expression errors,
 	//	thus the parser reply could be tested with ">" to differentiate between

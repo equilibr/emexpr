@@ -768,31 +768,178 @@ enum
 
 };
 
-//Holds the VM environment data
 typedef struct
 {
-	//The constants table
-	const ee_variable_type * constants;
+	ee_variable_type * constants;
+	const ee_variable_type ** variables;
+	ee_function * functions;
+	eei_vm_bytecode * instructions;
+} eei_vmmake_data;
 
-	//The (pointers-to) variables table
-	const ee_variable_type * const * variables;
+typedef struct
+{
+	int constants;
+	int variables;
+	int functions;
+	int instructions;
 
-	//The functions table
-	const ee_function * functions;
+	//This tracks the run-time stack usage
+	int stack;
+} eei_vmmake_counters;
 
-	//Start of the VM bytecode stream
-	const eei_vm_bytecode * instructions;
+typedef struct
+{
+	//Pointers to the data tables
+	eei_vmmake_data data;
 
-	//Pointer to the runtime stack
-	ee_variable_type * stack;
+	//Allocated/maximum size for each datum
+	eei_vmmake_counters max;
 
-	//Count of instructions to execute
-	int instruction_count;
+	//Currently used size for each datum
+	eei_vmmake_counters current;
 
-} eei_vm_environment;
+} eei_vmmake_environment;
 
+ee_parser_reply eei_vmmake_append_instruction(
+		eei_vmmake_environment * vm,
+		eei_vm_bytecode instruction,
+		unsigned int immediate)
+{
+	//Insert an instruction with an immediate
 
+	//Count number of immediate opcodes needed
+	int total = -1;
+	int data = immediate;
+	do
+	{
+		total++;
+		data >>= eei_vm_immediate_bits;
+	} while (data);
 
+	if (vm->current.instructions + data + 1 > vm->max.instructions)
+		return ee_parser_instrictions_overflow;
+
+	int i = total;
+	while (i)
+	{
+		vm->data.instructions[vm->current.instructions++] =
+				((immediate >> (eei_vm_immediate_bits * i)) & ((1 << eei_vm_immediate_bits) - 1)
+				<< eei_vm_immediate_shift)
+				| eei_vm_insturction_immediate;
+
+		i--;
+	}
+
+	vm->data.instructions[vm->current.instructions++] =
+			(immediate & ((1 << eei_vm_immediate_bits) - 1)
+			<< eei_vm_immediate_shift)
+			| (instruction << eei_vm_insturction_shift);
+
+	return ee_parser_ok;
+}
+
+ee_parser_reply eei_vmmake_load_constant(
+		eei_vmmake_environment * vm,
+		const ee_variable_type constant)
+{
+	//Add a constant load bytecode
+
+	//This searches the current constants table for a match
+	//We trade speed during parsing for lower memory usage of the final environment
+
+	//Linear search through the constants table
+	int index;
+	for (index = 0; index < vm->current.constants; ++index)
+		if (vm->data.constants[index] == constant)
+			break;
+
+	if (index == vm->current.constants)
+	{
+		//Nothing found, we need to add a new constant to the table
+		if (vm->current.constants >= vm->max.constants)
+			return ee_parser_constants_overflow;
+
+		vm->data.constants[index] = constant;
+		vm->current.constants++;
+	}
+
+	//Update stack usage
+	vm->current.stack++;
+	if (vm->max.stack < vm->current.stack)
+		vm->max.stack = vm->current.stack;
+
+	return eei_vmmake_append_instruction(vm, eei_vm_insturction_constant, index);
+}
+
+ee_parser_reply eei_vmmake_load_variable(
+		eei_vmmake_environment * vm,
+		const ee_variable_type * variable)
+{
+	//Add a variable load bytecode
+
+	//Linear search through the variables table
+	int index;
+	for (index = 0; index < vm->current.variables; ++index)
+		if (vm->data.variables[index] == variable)
+			break;
+
+	if (index == vm->current.variables)
+	{
+		//Nothing found, we need to add a new variable to the table
+		if (vm->current.variables >= vm->max.variables)
+			return ee_parser_variables_overflow;
+
+		vm->data.variables[index] = variable;
+		vm->current.variables++;
+	}
+
+	//Update stack usage
+	vm->current.stack++;
+	if (vm->max.stack < vm->current.stack)
+		vm->max.stack = vm->current.stack;
+
+	return eei_vmmake_append_instruction(vm, eei_vm_insturction_variable, index);
+}
+
+ee_parser_reply eei_vmmake_execute_functions(
+		eei_vmmake_environment * vm,
+		ee_function function,
+		int arity)
+{
+	//Add a function execute bytecode
+
+	//Linear search through the functions table
+	int index;
+	for (index = 0; index < vm->current.functions; ++index)
+		if (vm->data.functions[index] == function)
+			break;
+
+	if (index == vm->current.functions)
+	{
+		//Nothing found, we need to add a new constant to the table
+		if (vm->current.functions >= vm->max.functions)
+			return ee_parser_functions_overflow;
+
+		vm->data.functions[index] = function;
+		vm->current.functions++;
+	}
+
+	//Update stack usage
+	vm->current.stack += 1 - arity;
+	if (vm->max.stack < vm->current.stack)
+		vm->max.stack = vm->current.stack;
+
+	if (arity != 0)
+	{
+		const ee_parser_reply reply =
+				eei_vmmake_append_instruction(vm, eei_vm_insturction_arity, arity);
+
+		if (reply != ee_parser_ok)
+			return reply;
+	}
+
+	return eei_vmmake_append_instruction(vm, eei_vm_insturction_function, index);
+}
 
 //Parser
 //------
@@ -807,7 +954,7 @@ typedef struct
 typedef struct eei_parser_
 {
 	eei_parser_stack stack;
-	eei_vm_environment vm;
+	eei_vmmake_environment vm;
 	const ee_compilation_data * data;
 
 	eei_parser_token error_token;
@@ -1303,6 +1450,28 @@ ee_parser_reply eei_rule_handler_comma(eei_parser * parser, const eei_parser_nod
 
 //Virtual machine execute
 //-----------------------
+
+//Holds the VM environment data
+typedef struct
+{
+	//The constants table
+	const ee_variable_type * constants;
+
+	//The (pointers-to) variables table
+	const ee_variable_type * const * variables;
+
+	//The functions table
+	const ee_function * functions;
+
+	//Start of the VM bytecode stream
+	const eei_vm_bytecode * instructions;
+
+	//Pointer to the runtime stack
+	ee_variable_type * stack;
+
+	//Count of instructions to execute
+	int instruction_count;
+} eei_vm_environment;
 
 //Holds VM runtime data
 typedef struct
