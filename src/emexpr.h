@@ -124,7 +124,7 @@ typedef struct
 typedef enum
 {
 	//All is well
-	ee_parser_ok,
+	ee_parser_ok = 0,
 
 	//A generic, unspedicied, error
 	ee_parser_error,
@@ -163,8 +163,23 @@ typedef enum
 
 	//The expression has an unmatched end delimiter
 	ee_parser_expression_unmatched_end,
+
+	//Something that looked like a constant, but was not an actual constant, was encountered
+	ee_parser_expression_not_a_constant
 } ee_parser_reply;
 
+//Status returned by the evaluator
+typedef enum
+{
+	//All is well
+	ee_evaluator_ok = 0,
+
+	//All is well but the expression was empty
+	//	and did not return a result.
+	ee_evaluator_empty,
+
+	ee_evaluator_stack_underflow
+} ee_evaluator_reply;
 
 //Holds size calculations from the guestimator and compilator
 typedef struct
@@ -267,8 +282,7 @@ ee_parser_reply ee_compile(
 		const ee_compilation_data * data);
 
 //Evaluate the compiled environment
-//Returns non-zero on error.
-int ee_evaluate(ee_environment environment, ee_variable result);
+ee_evaluator_reply ee_evaluate(ee_environment environment, ee_variable result);
 
 #ifdef __cplusplus
 }

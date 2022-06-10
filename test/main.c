@@ -83,9 +83,8 @@ int test_subneg()
 	return 0;
 }
 
-int test_empty()
+int test_constant(const char * expression)
 {
-	static const char * expression = "";
 	ee_parser_reply reply;
 
 	ee_data_size sizes;
@@ -95,31 +94,36 @@ int test_empty()
 	memset(&global_environment.header, 0, sizeof(ee_environment_header));
 	memset(&compilation_data, 0, sizeof(ee_compilation_data));
 
+	printf("===Expression: %s\n",expression);
+
 	reply = ee_guestimate(expression, &sizes);
 	printf(
-				"status: %d; compile size: %04d; execute size: %04d; # %s\n",
+				"status: %d; compile size: %04d; execute size: %04d;\n",
 				reply,
 				sizes.compilation_size,
-				sizes.full_environment_size,
-				expression);
+				sizes.full_environment_size);
 
 	reply = ee_compile(expression, &sizes, &global_parser.header, &global_environment.header, &compilation_data);
 	printf(
-				"status: %d; compile size: %04d; execute size: %04d; # %s\n",
+				"status: %d; compile size: %04d; execute size: %04d;\n",
 				reply,
 				sizes.compilation_size,
-				sizes.full_environment_size,
-				expression);
+				sizes.full_environment_size);
 
-	ee_variable_type result;
-	ee_evaluate(&global_environment.header, &result);
+	ee_variable_type result = 0;
+	ee_evaluator_reply ereply = ee_evaluate(&global_environment.header, &result);
+	printf(
+				"status: %d; result: %g\n",
+				ereply,
+				result);
 
 	return 0;
 }
 
 int main()
 {
-	test_empty();
+//	test_constant("");
+	test_constant("1");
 //	test_subneg();
 
 	return 0;

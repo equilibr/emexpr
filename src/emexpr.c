@@ -833,7 +833,7 @@ ee_parser_reply eei_vmmake_append_instruction(
 	vm->data.instructions[vm->current.instructions++] =
 			(immediate & ((1 << eei_vm_immediate_bits) - 1)
 			<< eei_vm_immediate_shift)
-			| (instruction << eei_vm_insturction_shift);
+			| instruction;
 
 	return ee_parser_ok;
 }
@@ -1106,7 +1106,17 @@ ee_parser_reply eei_parse_done_node(eei_parser * parser, const eei_parser_node *
 {
 	//Test for a handler function
 	if (node->rule->handler)
-		return node->rule->handler(parser, node);
+	{
+		const ee_parser_reply reply = node->rule->handler(parser, node);
+		if (reply != ee_parser_ok)
+		{
+			eei_parser_token token;
+			token.token = GET_TOKEN(node->rule->rule);
+			token.start = node->token_start;
+			token.end = node->token_end;
+			return eei_parse_error(parser, reply, &token);
+		}
+	}
 
 	return ee_parser_ok;
 }
@@ -1438,7 +1448,14 @@ void eei_parse_expression(eei_parser * parser, const ee_char_type * expression)
 
 ee_parser_reply eei_rule_handler_number(eei_parser * parser, const eei_parser_node * node)
 {
+	eei_lexer_state state;
+	state.head = node->token_start;
+//	state.start = node->token_start;
 
+	if (eei_lexer_consume_number(&state) == eei_token_error)
+		return ee_parser_expression_not_a_constant;
+
+	return eei_vmmake_load_constant(&parser->vm, state.number_integer);
 }
 
 ee_parser_reply eei_rule_handler_comma(eei_parser * parser, const eei_parser_node * node)
@@ -1492,7 +1509,7 @@ typedef struct
 } eei_vm_runtime;
 
 //Exeucute the VM environment
-int eei_vm_execute(const eei_vm_environment * vm_environment)
+ee_evaluator_reply eei_vm_execute(const eei_vm_environment * vm_environment)
 {
 	eei_vm_runtime rt =
 	{
@@ -1587,10 +1604,13 @@ int eei_vm_execute(const eei_vm_environment * vm_environment)
 				rt.accumulator = 0;
 				break;
 		}
-
 	};
 
-	return 0;
+	//The stack top hold the result of the evaluation
+	if (rt.stack_top == vm_environment->stack)
+		return ee_evaluator_empty;
+
+	return ee_evaluator_ok;
 }
 
 
@@ -1816,7 +1836,7 @@ ee_parser_reply ee_compile(
 	return parser.status;
 }
 
-int ee_evaluate(ee_environment environment, ee_variable result)
+ee_evaluator_reply ee_evaluate(ee_environment environment, ee_variable result)
 {
 	eei_vm_environment vm_environment;
 
@@ -1834,12 +1854,19 @@ int ee_evaluate(ee_environment environment, ee_variable result)
 		vm_environment.instruction_count = full_env->instruction_count;
 	}
 
-	int error = eei_vm_execute(&vm_environment);
+	ee_evaluator_reply reply = eei_vm_execute(&vm_environment);
 
 	//Extract the top of the stack and return it as the result
-	*result = *vm_environment.stack;
+	if (result)
+	{
+		//A result is expected by the stack is empty
+		if (reply == ee_evaluator_empty)
+			return ee_evaluator_stack_underflow;
+		else
+			*result = *vm_environment.stack;
+	}
 
-	return error;
+	return reply;
 }
 
 //System verification
