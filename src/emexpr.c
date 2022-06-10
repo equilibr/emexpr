@@ -462,7 +462,7 @@ enum
 #define MAKE_GROUP_RULE() MAKE_DELIMITED_INFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_group),0)
 
 //Create a rule than only represents state
-#define STATE(rule) {rule, (eei_rule_handler)0}
+#define STATE(rule) {rule, (eei_rule_handler)NULL}
 
 //Create a rule with a handler
 #define HANDLE(rule, handler) {rule, handler}
@@ -1294,7 +1294,7 @@ ee_function eei_parse_symbols_get_function(
 		index++;
 	}
 
-	return 0;
+	return NULL;
 }
 
 
@@ -1700,7 +1700,7 @@ ee_parser_reply eei_rule_handler_postfix(eei_parser * parser, const eei_parser_n
 
 ee_parser_reply eei_rule_handler_comma(eei_parser * parser, const eei_parser_node * node)
 {
-
+	return ee_parser_function_not_implemented;
 }
 
 //Virtual machine execute
