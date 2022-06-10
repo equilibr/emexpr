@@ -3,6 +3,22 @@
 
 #include "src/emexpr.h"
 
+//Globally allocated data pools
+enum { pool_bytes = 10240 };
+
+union
+{
+	ee_compilation_header header;
+	char data[pool_bytes];
+} global_parser;
+
+union
+{
+	ee_environment_header header;
+	char data[pool_bytes];
+} global_environment;
+
+
 int subneg(int arity, const ee_variable actuals, ee_variable result)
 {
 	switch (arity)
@@ -20,22 +36,17 @@ int subneg(int arity, const ee_variable actuals, ee_variable result)
 	}
 }
 
-int main()
+int test_subneg()
 {
-	static const char * expression = "1 + 2";
+	static const char * expression = "";
+	ee_parser_reply reply;
 
 	ee_data_size sizes;
-	ee_environment_header header;
 
-	ee_parser_reply reply = ee_guestimate(expression, &sizes);
-	printf("%d : %s\n",sizes.full_environment_size, expression);
+	memset(&global_parser.header, 0, sizeof(ee_compilation_header));
+	memset(&global_environment.header, 0, sizeof(ee_environment_header));
 
-	//Locally allocated data pool
-	union
-	{
-		ee_environment_header header;
-		char data[1024];
-	} environment;
+	//Setup compilation data
 
 	ee_variable_type var1, var2;
 
@@ -48,7 +59,7 @@ int main()
 	};
 	const char * funcNames[] = {"-","-"};
 
-	ee_compilation_data data =
+	ee_compilation_data compilation_data =
 	{
 		.variables =
 		{
@@ -62,14 +73,44 @@ int main()
 		}
 	};
 
-	memset(&environment.header, 0, sizeof(ee_environment_header));
 
-	int compiled = ee_compile(expression, &sizes, &environment.header, &data);
-	printf("Compiled: %d\n", compiled);
+	reply = ee_guestimate(expression, &sizes);
+	printf("status: %d; size: %04d; # %s\n",reply,sizes.full_environment_size, expression);
+
+	reply = ee_compile(expression, &sizes, &global_parser.header, &global_environment.header, &compilation_data);
+	printf("status: %d; size: %04d\n",reply,sizes.full_environment_size);
+
+	return 0;
+}
+
+int test_empty()
+{
+	static const char * expression = "";
+	ee_parser_reply reply;
+
+	ee_data_size sizes;
+	ee_compilation_data compilation_data;
+
+	memset(&global_parser.header, 0, sizeof(ee_compilation_header));
+	memset(&global_environment.header, 0, sizeof(ee_environment_header));
+	memset(&compilation_data, 0, sizeof(ee_compilation_data));
+
+	reply = ee_guestimate(expression, &sizes);
+	printf("status: %d; size: %04d; # %s\n",reply,sizes.full_environment_size, expression);
+
+	reply = ee_compile(expression, &sizes, &global_parser.header, &global_environment.header, &compilation_data);
+	printf("status: %d; size: %04d\n",reply,sizes.full_environment_size);
 
 	ee_variable_type result;
-	int evaluated = ee_evaluate(&environment.header, &result);
-	printf("Evaluated: %d; Result: %f\n", evaluated, result);
+	ee_evaluate(&global_environment.header, &result);
+
+	return 0;
+}
+
+int main()
+{
+	test_empty();
+//	test_subneg();
 
 	return 0;
 }

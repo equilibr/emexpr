@@ -1716,6 +1716,7 @@ ee_parser_reply ee_guestimate(const ee_char_type * expression, ee_data_size * si
 ee_parser_reply ee_compile(
 		const ee_char_type * expression,
 		ee_data_size *size,
+		ee_compilation_header * compilation,
 		ee_environment environment,
 		const ee_compilation_data *data)
 {
