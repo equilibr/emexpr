@@ -146,16 +146,21 @@ int test_expression(const char * expression)
 
 int main()
 {
-	test_expression("1");
+	test_expression("");
 	test_expression("-1");
 	test_expression("1-1");
+	test_expression("1 - -1");
+	test_expression("1 - (-1)");
+	test_expression("1 - (-1--1)");
+	return 0;
 
-	test_expression("");
+
 	test_expression("1");
 	test_expression("()");
 	test_expression("(1)");
 	test_expression("(())");
 	test_expression("((1))");
+
 
 	test_expression("(1+");
 	test_expression(")1+");

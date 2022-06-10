@@ -285,6 +285,8 @@ typedef struct
 //Parser rule handler forward declarations
 //----------------------------------------
 ee_parser_reply eei_rule_handler_number(eei_parser * parser, const eei_parser_node * node);
+ee_parser_reply eei_rule_handler_prefix(eei_parser * parser, const eei_parser_node * node);
+ee_parser_reply eei_rule_handler_infix(eei_parser * parser, const eei_parser_node * node);
 ee_parser_reply eei_rule_handler_comma(eei_parser * parser, const eei_parser_node * node);
 
 //Parser rules
@@ -501,12 +503,12 @@ static const eei_rule_item eei_parser_prefix_rules[] =
 	//Grouping parens
 	STATE(MAKE_DELIMITED_PREFIX_RULE(MAKE_TOKEN(eei_token_delimiter,'('))),
 
-	STATE(MAKE_DEFAULT_PREFIX_RULE(MAKE_TOKEN(eei_token_operator,'!'))),
-	STATE(MAKE_DEFAULT_PREFIX_RULE(MAKE_TOKEN(eei_token_operator,'~'))),
-	STATE(MAKE_DEFAULT_PREFIX_RULE(MAKE_TOKEN(eei_token_operator,'&'))),
-	STATE(MAKE_DEFAULT_PREFIX_RULE(MAKE_TOKEN(eei_token_operator,'|'))),
-	STATE(MAKE_DEFAULT_PREFIX_RULE(MAKE_TOKEN(eei_token_operator,'+'))),
-	STATE(MAKE_DEFAULT_PREFIX_RULE(MAKE_TOKEN(eei_token_operator,'-'))),
+	HANDLE(MAKE_DEFAULT_PREFIX_RULE(MAKE_TOKEN(eei_token_operator,'!')), eei_rule_handler_prefix),
+	HANDLE(MAKE_DEFAULT_PREFIX_RULE(MAKE_TOKEN(eei_token_operator,'~')), eei_rule_handler_prefix),
+	HANDLE(MAKE_DEFAULT_PREFIX_RULE(MAKE_TOKEN(eei_token_operator,'&')), eei_rule_handler_prefix),
+	HANDLE(MAKE_DEFAULT_PREFIX_RULE(MAKE_TOKEN(eei_token_operator,'|')), eei_rule_handler_prefix),
+	HANDLE(MAKE_DEFAULT_PREFIX_RULE(MAKE_TOKEN(eei_token_operator,'+')), eei_rule_handler_prefix),
+	HANDLE(MAKE_DEFAULT_PREFIX_RULE(MAKE_TOKEN(eei_token_operator,'-')), eei_rule_handler_prefix),
 
 	STATE(MAKE_SENTINEL_RULE())
 };
@@ -519,17 +521,17 @@ static const eei_rule_item eei_parser_infix_rules[] =
 	//Function call
 	STATE(MAKE_DELIMITED_INFIX_RULE(MAKE_TOKEN(eei_token_delimiter,'('), eei_precedence_function)),
 
-	STATE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'|'), eei_precedence_logical_or)),
-	STATE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'&'), eei_precedence_logical_and)),
-	STATE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'='), eei_precedence_compare)),
-	STATE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'<'), eei_precedence_compare)),
-	STATE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'>'), eei_precedence_compare)),
-	STATE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'+'), eei_precedence_power1)),
-	STATE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'-'), eei_precedence_power1)),
-	STATE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'*'), eei_precedence_power2)),
-	STATE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'/'), eei_precedence_power2)),
-	STATE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'%'), eei_precedence_power2)),
-	STATE(MAKE_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'^'), eei_precedence_power3, eei_rule_right, 0)),
+	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'|'), eei_precedence_logical_or), eei_rule_handler_infix),
+	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'&'), eei_precedence_logical_and), eei_rule_handler_infix),
+	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'='), eei_precedence_compare), eei_rule_handler_infix),
+	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'<'), eei_precedence_compare), eei_rule_handler_infix),
+	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'>'), eei_precedence_compare), eei_rule_handler_infix),
+	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'+'), eei_precedence_power1), eei_rule_handler_infix),
+	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'-'), eei_precedence_power1), eei_rule_handler_infix),
+	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'*'), eei_precedence_power2), eei_rule_handler_infix),
+	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'/'), eei_precedence_power2), eei_rule_handler_infix),
+	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'%'), eei_precedence_power2), eei_rule_handler_infix),
+	HANDLE(MAKE_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'^'), eei_precedence_power3, eei_rule_right, 0), eei_rule_handler_infix),
 
 	STATE(MAKE_SENTINEL_RULE())
 };
@@ -1130,7 +1132,6 @@ ee_parser_reply eei_parse_symbols_init(
 	parser->symboltable.variables = 0;
 	if (data->variables.meta.names && data->variables.data)
 	{
-
 			const ee_char_type * const * names = data->variables.meta.names;
 			ee_variable const * values = data->variables.data;
 
@@ -1248,7 +1249,7 @@ ee_function eei_parse_symbols_get_function(
 
 	while (index < parser->symboltable.functions)
 	{
-		int index =
+		index =
 				eei_parse_symbols_get_name(
 					parser->symboltable.foreign->functions.meta.names,
 					index,
@@ -1265,7 +1266,10 @@ ee_function eei_parse_symbols_get_function(
 			{
 				//This is regular function that must get an exact number of parameters
 				if (found_arity != arity)
+				{
+					index++;
 					continue;
+				}
 			}
 			else
 			{
@@ -1274,7 +1278,10 @@ ee_function eei_parse_symbols_get_function(
 				found_arity = -found_arity - 1;
 
 				if (found_arity > arity)
+				{
+					index++;
 					continue;
+				}
 			}
 
 			//We found it!
@@ -1644,6 +1651,26 @@ ee_parser_reply eei_rule_handler_number(eei_parser * parser, const eei_parser_no
 		return ee_parser_expression_not_a_constant;
 
 	return eei_vmmake_load_constant(&parser->vm, state.number_integer);
+}
+
+ee_parser_reply eei_rule_handler_prefix(eei_parser * parser, const eei_parser_node * node)
+{
+	ee_function op = eei_parse_symbols_get_function(parser, 1, node);
+
+	if (!op)
+		return ee_parser_prefix_not_implemented;
+
+	return eei_vmmake_execute_functions(&parser->vm, op, 1);
+}
+
+ee_parser_reply eei_rule_handler_infix(eei_parser * parser, const eei_parser_node * node)
+{
+	ee_function op = eei_parse_symbols_get_function(parser, 2, node);
+
+	if (!op)
+		return ee_parser_infix_not_implemented;
+
+	return eei_vmmake_execute_functions(&parser->vm, op, 2);
 }
 
 ee_parser_reply eei_rule_handler_comma(eei_parser * parser, const eei_parser_node * node)

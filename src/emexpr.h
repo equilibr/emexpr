@@ -155,6 +155,15 @@ typedef enum
 	//Run out of functions space
 	ee_parser_functions_overflow,
 
+	//A function used by the expression is not implemented
+	ee_parser_function_not_implemented,
+
+	//A prefix operator used by the expression is not implementation
+	ee_parser_prefix_not_implemented,
+
+	//An infix operator used by the expression is not implementation
+	ee_parser_infix_not_implemented,
+
 	//A malformed expression was parsed with an unspecified error.
 	//Any enumerator after this indicates only various expression errors,
 	//	thus the parser reply could be tested with ">" to differentiate between
