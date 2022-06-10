@@ -13,8 +13,8 @@ If you don't really care about call stack depth, dynamic allocations, memory foo
 
 - Designed for low-resource embedded systems. 
 - Keeps the call stack as small as possible.
-- C99 with **no dependencies**. Not even `math.h` and `memory.h`.
-- Compiles with: -std=c99 -ffreestanding
+- C99 with **no dependencies**. Not even `math.h` and `memory.h`, only `stddef.h`.
+- Compiles, warning free, with: -std=c99 -ffreestanding -Wall -Wextra -pedantic-errors
 - Single source file and header file for the core functionality.
 - Simple and extremely fast.
 - Does **not** require usage of heap memory.
@@ -29,6 +29,8 @@ If you don't really care about call stack depth, dynamic allocations, memory foo
 ### Building
 
 The EmExpr core is self-contained in two files: `emexpr.c` and `emexpr.h`. To use EmExpr, simply add those two files to your project.
+
+If your toolchain is really ancient and/or broken, and does not supply `stddef.h` for some obscure reason, simply erase that line and define `ptrdiff_t` yourself.
 
 ### Short Example
 

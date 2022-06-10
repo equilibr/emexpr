@@ -5,7 +5,7 @@ CONFIG -= qt
 
 QMAKE_CFLAGS += -std=c99 -ffreestanding
 QMAKE_CFLAGS += -Wall -Wextra
-#QMAKE_CFLAGS += -pedantic-errors
+QMAKE_CFLAGS += -pedantic-errors
 
 SOURCES += \
 	src/emexpr.c \

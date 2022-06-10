@@ -8,6 +8,8 @@
 
 #include "emexpr.h"
 
+#include <stddef.h>
+
 //Notation and formalism:
 // All implementation details have a prefix of "eei" - Embedded Expression Implementation
 // All externally visible definition have a prefix of "ee" - Embedded Expression
@@ -637,7 +639,7 @@ int eei_find_end_rule(eei_token token, eei_rule_description rule)
 //Parser stack
 //------------
 
-typedef struct eei_parser_node_
+struct eei_parser_node_
 {
 	//The rule being processed
 	const eei_rule_item * rule;
@@ -655,7 +657,7 @@ typedef struct eei_parser_node_
 	//For rules creating a group this holds the number
 	//	of direct items in said group.
 	int group_items;
-} eei_parser_node;
+};
 
 //Holds management data for the parser stack that is used instead
 //	of functional recursion to hold the parser data
@@ -971,7 +973,7 @@ typedef struct
 	int functions;
 } eei_parser_symboltable;
 
-typedef struct eei_parser_
+struct eei_parser_
 {
 	eei_parser_stack stack;
 	eei_vmmake_environment vm;
@@ -983,7 +985,7 @@ typedef struct eei_parser_
 	//Stack index of the current group
 	//This points to the actual rule and not the synthetic group rule
 	int currentGroup;
-} eei_parser;
+};
 
 ee_parser_reply eei_parse_set_error(
 		eei_parser * parser,
@@ -1859,7 +1861,7 @@ ee_evaluator_reply eei_vm_execute(const eei_vm_environment * vm_environment)
 //--------------------
 
 //Helper macro to calculate alignment of a type
-#define alignof(type) ((int)&((struct { char c; type d; } *)0)->d)
+#define alignof(type) ((ptrdiff_t)&((struct { char c; type d; } *)0)->d)
 
 //Helper structure to simplify alignment management
 typedef struct
@@ -1909,28 +1911,28 @@ char * eei_environment_init(
 	char * ptr = base;
 
 	//Constants
-	while ((unsigned long int)ptr % alignof(ee_variable_type))
+	while ((ptrdiff_t)ptr % alignof(ee_variable_type))
 		ptr++;
 
 	environment->constants = (int)(ptr - base);
 	ptr += sizeof(ee_variable_type) * size->constants;
 
 	//Variables
-	while ((unsigned long int)ptr % alignof(const ee_variable_type*))
+	while ((ptrdiff_t)ptr % alignof(const ee_variable_type*))
 		ptr++;
 
 	environment->variables = (int)(ptr - base);
 	ptr += sizeof(const ee_variable_type*) * size->variables;
 
 	//Functions
-	while ((unsigned long int)ptr % alignof(ee_function))
+	while ((ptrdiff_t)ptr % alignof(ee_function))
 		ptr++;
 
 	environment->functions = (int)(ptr - base);
 	ptr += sizeof(ee_function) * size->functions;
 
 	//Instructions
-	while ((unsigned long int)ptr % alignof(eei_vm_bytecode))
+	while ((ptrdiff_t)ptr % alignof(eei_vm_bytecode))
 		ptr++;
 
 	environment->instructions = (int)(ptr - base);
@@ -2022,7 +2024,7 @@ ee_parser_reply ee_compile(
 	//Setup the parser stack memory
 
 	char * ptr = (char *)&compilation->internal[0];
-	while ((unsigned long int)ptr % alignof(eei_parser_node))
+	while ((ptrdiff_t)ptr % alignof(eei_parser_node))
 		ptr++;
 
 	parser.stack.stack = (eei_parser_node*)ptr;
@@ -2063,7 +2065,7 @@ ee_parser_reply ee_compile(
 	//TODO: Compress data
 
 	//Find the location of the stack if it is to be allocated inside the environment
-	while ((unsigned long int)ptr % alignof(ee_variable_type))
+	while ((ptrdiff_t)ptr % alignof(ee_variable_type))
 		ptr++;
 
 	environment->stack = (ee_variable_type *)ptr;
