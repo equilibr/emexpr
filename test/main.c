@@ -122,8 +122,10 @@ int test_constant(const char * expression)
 
 int main()
 {
-//	test_constant("");
+	test_constant("");
 	test_constant("1");
+	test_constant("()");
+	test_constant("(1)");
 //	test_subneg();
 
 	return 0;
