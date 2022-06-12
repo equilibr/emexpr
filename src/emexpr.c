@@ -2149,6 +2149,18 @@ ee_evaluator_reply ee_evaluate(ee_environment environment, ee_variable result)
 		vm_environment.instruction_count = full_env->instruction_count;
 	}
 
+	if (vm_environment.instruction_count == 0)
+	{
+		//This is an empty expression that can not return any result
+
+		if (result)
+			//A result was expected - notify the caller
+			return ee_evaluator_empty;
+		else
+			//No result was expected anyhow - all is well
+			return ee_evaluator_ok;
+	}
+
 	ee_evaluator_reply reply = eei_vm_execute(&vm_environment);
 
 	//Extract the top of the stack and return it as the result

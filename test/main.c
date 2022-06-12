@@ -114,10 +114,18 @@ ee_compilation_data global_compilation_data =
 	}
 };
 
+void test_print_header()
+{
+	printf(
+				"%16s   %8s %16s %10s %5s %5s %5s %5s %5s %5s %5s %5s %5s %s\n",
+				"expression","result","compile","eval",
+				"parse","exec","const","var","func","vm","stack","start","len.","text");
+}
+
 void test_print_sizes(const ee_data_size * sizes)
 {
 	printf(
-				"parse: %04d; exec: %04d; const: %04d; var: %04d; func: %04d; vm: %04d; stack: %04d;",
+				"%5d %5d %5d %5d %5d %5d %5d ",
 				sizes->compilation_size,
 				sizes->full_environment_size,
 				sizes->constants,
@@ -131,9 +139,13 @@ void test_print_location(const char * expression, const ee_compilation_header * 
 {
 	int length = header->error_token_end - header->error_token_start;
 	int position = header->error_token_start - expression;
-	printf("{%d %d} ",position, length);
+	printf("%5d %5d ",position, length);
 	if (length)
 		printf("%.*s",length, header->error_token_start);
+	else if (!*header->error_token_start)
+		printf("END");
+	else
+		printf("START");
 }
 
 const char * parser_status_string(ee_parser_reply reply)
@@ -172,7 +184,7 @@ const char * eval_status_string(ee_evaluator_reply reply)
 	{
 		"ok",
 		"empty",
-		"stack underflow",
+		"stack und.",
 	};
 
 	return strings[reply];
@@ -194,11 +206,11 @@ int test_expression(const char * expression)
 //	test_print_sizes(&sizes);
 
 	reply = ee_compile(expression, &sizes, &global_parser.header, &global_environment.header, &global_compilation_data);
-	if (reply)
+	if (reply >= ee_parser_error)
 	{
-		printf("%16s; ",parser_status_string(reply));
+		printf("%8s ", " ");
+		printf("%16s %10s ",parser_status_string(reply)," ");
 		test_print_sizes(&sizes);
-		printf(" ");
 		test_print_location(expression, &global_parser.header);
 		printf("\n");
 		return 1;
@@ -206,21 +218,29 @@ int test_expression(const char * expression)
 
 	ee_variable_type result = 0;
 	ee_evaluator_reply ereply = ee_evaluate(&global_environment.header, &result);
-	if (reply || ereply > ee_evaluator_empty)
+	if (reply || ereply)
 	{
-		printf("compile: %16s; eval: %s; ",parser_status_string(reply), eval_status_string(ereply));
+		printf("%8s ", " ");
+		printf("%16s %10s ",parser_status_string(reply), eval_status_string(ereply));
 		test_print_sizes(&sizes);
 		printf("\n");
 		return 1;
 	}
 	else
-			printf("%g\n", result);
+	{
+			printf("%8g ", result);
+			printf("%16s %10s ",parser_status_string(reply), eval_status_string(ereply));
+			test_print_sizes(&sizes);
+			printf("\n");
+	}
 
 	return 0;
 }
 
 int main()
 {
+	test_print_header();
+
 	test_expression("1 m");
 	test_expression("1 M * 1 m");
 	test_expression("2 + 1 M * 1 m");
