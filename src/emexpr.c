@@ -784,12 +784,11 @@ enum
 	//Read and push a variable to the execution stack
 	eei_vm_insturction_variable = (0x02) << eei_vm_insturction_shift,
 
-	//Execute a function
-	eei_vm_insturction_function = (0x03) << eei_vm_insturction_shift,
-
 	//Set the arity of the nearest function to execute
-	eei_vm_insturction_arity = (0x04) << eei_vm_insturction_shift,
+	eei_vm_insturction_arity = (0x03) << eei_vm_insturction_shift,
 
+	//Execute a function
+	eei_vm_insturction_function = (0x04) << eei_vm_insturction_shift,
 };
 
 typedef struct
@@ -1857,6 +1856,27 @@ ee_evaluator_reply eei_vm_execute(const eei_vm_environment * vm_environment)
 				rt.accumulator = 0;
 				break;
 
+			case eei_vm_insturction_arity:
+				//Set the arity for the next function to execute
+				rt.arity = rt.accumulator;
+
+				//Test if we can go directly to the "function" case since
+				//	this is the expected sequence when the function table is small.
+				//The instruction was already advanced in the switch header
+				if (((*rt.instruction) & eei_vm_mask_instruction) != eei_vm_insturction_function)
+				{
+					//Clear the accumulator in preparation for the next instruction
+					rt.accumulator = 0;
+					break;
+				}
+
+				//Set the accumulator from the immediate bits and advance the instruction
+				rt.accumulator =
+						((*rt.instruction++) >> eei_vm_immediate_shift)
+						& eei_vm_mask_immediate_shifted;
+
+				//fall through
+
 			case eei_vm_insturction_function:
 			{
 				int error;
@@ -1894,14 +1914,6 @@ ee_evaluator_reply eei_vm_execute(const eei_vm_environment * vm_environment)
 
 				break;
 			}
-
-			case eei_vm_insturction_arity:
-				//Set the arity for the next function to execute
-				rt.arity = rt.accumulator;
-
-				//Clear the accumulator in preparation for the next instruction
-				rt.accumulator = 0;
-				break;
 		}
 	};
 

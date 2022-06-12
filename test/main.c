@@ -264,7 +264,6 @@ int main()
 
 	test_expression("pi()");
 	test_expression("pi");
-	test_expression("unity()");
 	test_expression("unity(pi())");
 	test_expression("unity(1+1)");
 	test_expression("arity()");
@@ -314,6 +313,7 @@ int main()
 	test_expression("1+(");
 	test_expression("1+)");
 	test_expression("novar");
+	test_expression("unity()");
 	test_expression("arity(1+(),(2))");
 
 	return 0;
