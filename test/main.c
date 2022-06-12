@@ -128,15 +128,20 @@ ee_compilation_data global_compilation_data =
 void test_print_header()
 {
 	printf(
-				"%16s   %8s %16s %10s %5s %5s %5s %5s %5s %5s %5s %5s %5s %s\n",
+				"%16s   %8s %16s %10s "
+				"%5s %4s %5s %3s %3s %2s %5s   "
+				"%5s %4s %5s %3s %3s %2s %5s   "
+				"%5s %5s %s\n",
 				"expression","result","compile","eval",
-				"parse","exec","const","var","func","vm","stack","start","len.","text");
+				"parse","exec","const","var","fun","vm","stack",
+				"parse","exec","const","var","fun","vm","stack",
+				"start","len.","text");
 }
 
 void test_print_sizes(const ee_data_size * sizes)
 {
 	printf(
-				"%5d %5d %5d %5d %5d %5d %5d ",
+				"%5d %4d %5d %3d %3d %2d %5d   ",
 				sizes->compilation_size,
 				sizes->full_environment_size,
 				sizes->constants,
@@ -144,6 +149,17 @@ void test_print_sizes(const ee_data_size * sizes)
 				sizes->functions,
 				sizes->instructions,
 				sizes->runtime_stack);
+}
+
+void test_diff_sizes(ee_data_size * dst, const ee_data_size * left, const ee_data_size * right)
+{
+	dst->compilation_size = left->compilation_size - right->compilation_size;
+	dst->full_environment_size = left->full_environment_size - right->full_environment_size;
+	dst->constants = left->constants - right->constants;
+	dst->variables = left->variables - right->variables;
+	dst->functions = left->functions - right->functions;
+	dst->instructions = left->instructions - right->instructions;
+	dst->runtime_stack = left->runtime_stack - right->runtime_stack;
 }
 
 void test_print_location(const char * expression, const ee_compilation_header * header)
@@ -208,6 +224,8 @@ int test_expression(const char * expression)
 	ee_parser_reply reply;
 
 	ee_data_size sizes;
+	ee_data_size sizes_guess;
+	ee_data_size sizes_delta;
 
 	memset(&global_parser.header, 0, sizeof(ee_compilation_header));
 	memset(&global_environment.header, 0, sizeof(ee_environment_header));
@@ -215,15 +233,17 @@ int test_expression(const char * expression)
 	printf("%16s = ",expression);
 
 	reply = ee_guestimate(expression, &sizes);
-//	printf("guesstimate status: %d; ",reply);
-//	test_print_sizes(&sizes);
+	memcpy(&sizes_guess, &sizes, sizeof(ee_data_size));
 
 	reply = ee_compile(expression, &sizes, &global_parser.header, &global_environment.header, &global_compilation_data);
+	test_diff_sizes(&sizes_delta, &sizes_guess, &sizes);
+
 	if (reply >= ee_parser_error)
 	{
 		printf("%8s ", " ");
 		printf("%16s %10s ",parser_status_string(reply)," ");
 		test_print_sizes(&sizes);
+		test_print_sizes(&sizes_delta);
 		test_print_location(expression, &global_parser.header);
 		printf("\n");
 		return 1;
@@ -236,6 +256,7 @@ int test_expression(const char * expression)
 		printf("%8s ", " ");
 		printf("%16s %10s ",parser_status_string(reply), eval_status_string(ereply));
 		test_print_sizes(&sizes);
+		test_print_sizes(&sizes_delta);
 		printf("\n");
 		return 1;
 	}
@@ -244,6 +265,7 @@ int test_expression(const char * expression)
 			printf("%8g ", result);
 			printf("%16s %10s ",parser_status_string(reply), eval_status_string(ereply));
 			test_print_sizes(&sizes);
+			test_print_sizes(&sizes_delta);
 			printf("\n");
 	}
 
