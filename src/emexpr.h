@@ -16,6 +16,12 @@ extern "C" {
 //The underlying type of an expression character
 typedef char ee_char_type;
 
+//The type used for counting memory, in bytes
+typedef signed short ee_memory_size;
+
+//The type used for counting various elements of the parsing and execution environment
+typedef signed char ee_element_count;
+
 //The type of the variable handled by the engine
 //This type must be copyable by the compiler using the assignment(=) syntax!
 typedef double ee_variable_type;
@@ -55,7 +61,7 @@ typedef struct
 	//Functions with an arity of 1 can be invoked as a post-fix operator without the usual call syntax.
 	//This can be useful for suppling scaling or conversions, such as "k/M/G".
 	//Function with an arity of one can have the same name as a variable when used ONLY as a post-fix operator.
-	const int arity;
+	const ee_element_count arity;
 
 } ee_compilation_data_function;
 
@@ -64,7 +70,7 @@ typedef struct
 typedef struct
 {
 	const ee_char_type * const * names;
-	int count;
+	ee_element_count count;
 } ee_compilation_data_meta;
 
 //This structure provides complete variables data for ee_compilation_data.
@@ -222,20 +228,20 @@ typedef struct
 	//Data for the compilation, used only by ee_compile.
 	//Aligned as ee_compilation_header.
 	//Calculated by ee_guestimate.
-	int compilation_size;
+	ee_memory_size compilation_size;
 
 	//Data for the execution environment, used by ee_compile and ee_evaluate.
 	//Aligned as ee_environment_header.
 	//Calculated by ee_guestimate.
 	//ee_compile will recalculate this and shrink to the actual size used.
-	int environment_size;
+	ee_memory_size environment_size;
 
 	//Data for the runtime stack, used only by ee_evaluate.
 	//Aligned as ee_variable, when allocated separately.
 	//Calculated by ee_guestimate.
 	//ee_compile will recalculate this and shrink to the actual size used.
 	//This can be allocated as part of the execution environment or separately
-	int stack_size;
+	ee_memory_size stack_size;
 
 	//Data for the execution environment, used by ee_compile and ee_evaluate.
 	//Aligned as ee_environment_header.
@@ -244,18 +250,18 @@ typedef struct
 	//This can be used instead of environment_size & stack_size when
 	//	the runtime stack is allocated inside the execution environment.
 	//This is just the sum of environment_size & stack_size taking into account alignment of the latter.
-	int full_environment_size;
+	ee_memory_size full_environment_size;
 
 
 	//Counts of the various elements
 	//Used and updated by ee_compile
 
-	int constants;
-	int variables;
-	int functions;
-	int instructions;
-	int compilation_stack;
-	int runtime_stack;
+	ee_element_count constants;
+	ee_element_count variables;
+	ee_element_count functions;
+	ee_element_count instructions;
+	ee_element_count compilation_stack;
+	ee_element_count runtime_stack;
 } ee_data_size;
 
 //Basic allocation element for the environment
@@ -282,7 +288,7 @@ typedef struct
 	ee_variable_type * stack;
 
 	//Max runtime stack depth, in count of of ee_variable_type elements
-	int max_stack;
+	ee_element_count max_stack;
 } ee_environment_header;
 
 //Typedef to simply the interface

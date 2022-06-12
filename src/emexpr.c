@@ -668,7 +668,7 @@ struct eei_parser_node_
 
 	//_Execution_ stack index when this node was pushed.
 	//Used to calculate arity of functions and validate groups are correct.
-	int stack_top;
+	ee_element_count stack_top;
 };
 
 //Holds management data for the parser stack that is used instead
@@ -1961,25 +1961,26 @@ ee_evaluator_reply eei_vm_execute(const eei_vm_environment * vm_environment)
 //Helper macro to calculate alignment of a type
 #define alignof(type) ((ptrdiff_t)&((struct { char c; type d; } *)0)->d)
 
-//Helper structure to simplify alignment management
+//Internal direct data held inside a compilation data structure
 typedef struct
 {
 	ee_compilation_header header;
 	ee_environment_element data[1];
 } eei_compilation_struct;
 
+//Internal direct data held inside an execution environment
 typedef struct
 {
 	ee_environment_header header;
 
 	//Byte offsets from "data" for the various tables
-	int constants;
-	int variables;
-	int functions;
-	int instructions;
+	ee_memory_size constants;
+	ee_memory_size variables;
+	ee_memory_size functions;
+	ee_memory_size instructions;
 
 	//Count of instructions
-	int instruction_count;
+	ee_element_count instruction_count;
 
 	ee_environment_element data[1];
 } eei_environment_struct;
