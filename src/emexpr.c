@@ -1552,50 +1552,46 @@ void eei_parse_token(eei_parser * parser, eei_parser_token * token)
 	const eei_rule_item * rule = eei_find_rule(token->token, expected);
 	int foundExpected = IS_RULE_VALID(rule->rule);
 
-	if (foundExpected && (expected == eei_rule_prefix))
-		//This is an expected prefix token
-		eei_parse_parsePrefix(parser, rule, token);
-	else
+	if (!foundExpected && (expected != eei_rule_postfix))
 	{
-		//This is either a infix or postfix
-		//Postfix binds strongest of them all, so it is searched for first
-
-		//Do not perform an additional search if a postfix was actually expected
-		const eei_rule_item * postRule =
-				(expected != eei_rule_postfix)
-				? eei_find_rule(token->token, eei_rule_postfix)
-				: rule;
-
-		if (IS_RULE_VALID(postRule->rule))
-		{
-			//A postfix was found
-			foundExpected = 1;
-
-			eei_parse_foldPrefix(parser);
-			eei_parse_foldPrecedence(parser, postRule);
-			eei_parse_parsePostfix(parser, postRule, token);
-		}
-		else if (foundExpected && (expected != eei_rule_postfix))
-		{
-			//A postfix was not found - but we weren't expecting one anyway.
-			//This will not be executed if a postfix was actually expected!
-
-			//Fold all prefixes before going any further
-			//	since they bind stonger than the infixes.
-			eei_parse_foldPrefix(parser);
-
-			eei_parse_foldPrecedence(parser, rule);
-			eei_parse_parseInfix(parser, rule, token);
-		}
+		//A postfix can appear when not expected - so look for it
+		rule = eei_find_rule(token->token, eei_rule_postfix);
+		foundExpected = IS_RULE_VALID(rule->rule);
 	}
 
-	//The token was processed
 	if (foundExpected)
-		return;
+	{
+		switch (expected)
+		{
+			case eei_rule_prefix:
+				eei_parse_parsePrefix(parser, rule, token);
+				break;
 
-	//The current token is not any expected token - it must be some END delimiter
-//	eei_parse_foldPrefix(parser);
-	eei_parse_foldEndDilimiter(parser, token);
+			case eei_rule_infix:
+				//Fold all prefixes before going any further
+				//	since they bind stonger than the infixes.
+				eei_parse_foldPrefix(parser);
+
+				eei_parse_foldPrecedence(parser, rule);
+				eei_parse_parseInfix(parser, rule, token);
+				break;
+
+			case eei_rule_postfix:
+				eei_parse_foldPrefix(parser);
+				eei_parse_foldPrecedence(parser, rule);
+				eei_parse_parsePostfix(parser, rule, token);
+				break;
+
+			default:
+				eei_parse_error(parser, ee_parser_error, token);
+		}
+	}
+	else
+	{
+		//The current token is not any expected token - it must be some END delimiter
+//		eei_parse_foldPrefix(parser);
+		eei_parse_foldEndDilimiter(parser, token);
+	}
 }
 
 void eei_parse_init(eei_parser * parser, const ee_char_type * expression)

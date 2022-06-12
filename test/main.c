@@ -213,6 +213,7 @@ int main()
 //	return 0;
 
 	test_expression("pi()");
+	test_expression("unity()");
 	test_expression("unity(0)");
 	test_expression("unity(1+1)");
 	test_expression("arity()");
