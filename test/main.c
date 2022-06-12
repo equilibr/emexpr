@@ -166,6 +166,7 @@ const char * parser_status_string(ee_parser_reply reply)
 		"unknown var",
 		"dup. varfunc",
 		"no func.",
+		"wrong arity",
 		"no prefix",
 		"no infix",
 		"no postfix",

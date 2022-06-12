@@ -168,6 +168,9 @@ typedef enum
 	//A function used by the expression is not implemented
 	ee_parser_function_not_implemented,
 
+	//A function used by the expression is not implemented with the requested arity
+	ee_parser_function_wrong_arity,
+
 	//A prefix operator used by the expression is not implementation
 	ee_parser_prefix_not_implemented,
 
