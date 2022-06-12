@@ -176,7 +176,7 @@ int test_expression(const char * expression)
 	memset(&global_parser.header, 0, sizeof(ee_compilation_header));
 	memset(&global_environment.header, 0, sizeof(ee_environment_header));
 
-	printf("%10s = ",expression);
+	printf("%16s = ",expression);
 
 	reply = ee_guestimate(expression, &sizes);
 //	printf("guesstimate status: %d; ",reply);
@@ -208,11 +208,16 @@ int test_expression(const char * expression)
 
 int main()
 {
+//	test_expression("2 * 3 + 4");
+//	return 0;
+
 	test_expression("1 m");
 	test_expression("1 M * 1 m");
+	test_expression("2 + 1 M * 1 m");
 //	return 0;
 
 	test_expression("pi()");
+	test_expression("pi");
 	test_expression("unity()");
 	test_expression("unity(0)");
 	test_expression("unity(1+1)");

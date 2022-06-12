@@ -1370,19 +1370,6 @@ static inline void eei_parse_parseInfix(
 		const eei_rule_item * rule,
 		const eei_parser_token * token)
 {
-	const int delimited = GET_RULE_ENDDELIMITER(rule->rule);
-	eei_parser_node node;
-
-	if (!delimited)
-	{
-		//This is a delimited infix rule.
-		//It should preserve whatever is at the stack top becase
-		//	it will be handled specially when THIS rule is unfolded.
-
-		if (eei_parse_popT(parser, &node, token) != ee_parser_ok)
-			return;
-	}
-
 	eei_parse_push(
 				parser,
 				rule,
@@ -1391,9 +1378,6 @@ static inline void eei_parse_parseInfix(
 				? GET_RULE_PRECEDENCE(rule->rule)
 				: GET_RULE_PRECEDENCE(rule->rule) - 1,
 				token);
-
-	if (!delimited)
-		eei_parse_done_node(parser, &node);
 
 	if (GET_TOKEN_TYPE(rule->rule) == eei_token_delimiter)
 		eei_parse_pushGroupRule(parser, token);
@@ -1677,10 +1661,17 @@ ee_parser_reply eei_rule_handler_variable(eei_parser * parser, const eei_parser_
 {
 	ee_variable_type * var = eei_parse_symbols_get_variable(parser, node);
 
-	if (!var)
+	if (var)
+		return eei_vmmake_load_variable(&parser->vm, var);
+
+	//Look for a zero-arity function with the same name
+
+	ee_function op = eei_parse_symbols_get_function(parser, 0, node);
+
+	if (!op)
 		return ee_parser_unknown_variable;
 
-	return eei_vmmake_load_variable(&parser->vm, var);
+	return eei_vmmake_execute_functions(&parser->vm, op, 0);
 }
 
 ee_parser_reply eei_rule_handler_prefix(eei_parser * parser, const eei_parser_node * node)
