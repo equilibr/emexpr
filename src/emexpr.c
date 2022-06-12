@@ -1210,7 +1210,7 @@ static inline int eei_parse_symbols_compare_node(
 		if (*cmp++ != *ptr++)
 			return 0;
 
-	return 1;
+	return *cmp == '\0';
 }
 
 static inline int eei_parse_symbols_get_name(
@@ -1661,17 +1661,22 @@ ee_parser_reply eei_rule_handler_variable(eei_parser * parser, const eei_parser_
 {
 	ee_variable_type * var = eei_parse_symbols_get_variable(parser, node);
 
+	//Look for a zero-arity function with the same name
+	ee_function op = eei_parse_symbols_get_function(parser, 0, node);
+
+	if (var && op)
+		//We do not allow both to be defined to avoid confusion
+		return ee_parser_varfunction_duplicate;
+
+	if (!var && !op)
+		//Assume this should have been a variable
+		return ee_parser_unknown_variable;
+
 	if (var)
 		return eei_vmmake_load_variable(&parser->vm, var);
 
-	//Look for a zero-arity function with the same name
-
-	ee_function op = eei_parse_symbols_get_function(parser, 0, node);
-
-	if (!op)
-		return ee_parser_unknown_variable;
-
-	return eei_vmmake_execute_functions(&parser->vm, op, 0);
+	if (op)
+		return eei_vmmake_execute_functions(&parser->vm, op, 0);
 }
 
 ee_parser_reply eei_rule_handler_prefix(eei_parser * parser, const eei_parser_node * node)

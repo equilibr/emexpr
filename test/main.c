@@ -142,6 +142,7 @@ const char * parser_status_string(ee_evaluator_reply reply)
 		"var. overflow",
 		"func. overflow",
 		"unknown var",
+		"duplicate varfunc",
 		"no func.",
 		"no prefix",
 		"no infix",
@@ -185,7 +186,7 @@ int test_expression(const char * expression)
 	reply = ee_compile(expression, &sizes, &global_parser.header, &global_environment.header, &global_compilation_data);
 	if (reply)
 	{
-		printf("compilation status: %s; ",parser_status_string(reply));
+		printf("compile: %s; ",parser_status_string(reply));
 		test_print_sizes(&sizes);
 		printf("\n");
 		return 1;
@@ -208,6 +209,7 @@ int test_expression(const char * expression)
 
 int main()
 {
+	test_expression("a");
 //	test_expression("2 * 3 + 4");
 //	return 0;
 

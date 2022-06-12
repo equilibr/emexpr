@@ -158,6 +158,9 @@ typedef enum
 	//A variable named by the expression is not provided
 	ee_parser_unknown_variable,
 
+	//A variable and a zero-arity function of the same name are defined at the same time
+	ee_parser_varfunction_duplicate,
+
 	//A function used by the expression is not implemented
 	ee_parser_function_not_implemented,
 
