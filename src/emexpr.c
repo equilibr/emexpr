@@ -787,8 +787,11 @@ enum
 	//Set the arity of the nearest function to execute
 	eei_vm_insturction_arity = (0x03) << eei_vm_insturction_shift,
 
+	//Execute a function with an arity of 1 or 2
+	eei_vm_insturction_function2 = (0x04) << eei_vm_insturction_shift,
+
 	//Execute a function
-	eei_vm_insturction_function = (0x04) << eei_vm_insturction_shift,
+	eei_vm_insturction_function = (0x05) << eei_vm_insturction_shift,
 };
 
 typedef struct
@@ -952,7 +955,17 @@ ee_parser_reply eei_vmmake_execute_functions(
 	if (vm->max.stack < vm->current.stack)
 		vm->max.stack = vm->current.stack;
 
-	if (arity != 0)
+	if (
+		((arity == 1) || (arity == 2))
+		&& (index <= (((1 << (eei_vm_insturction_bits-1)) - 1))) )
+	{
+		//Use the special command
+		return eei_vmmake_append_instruction(
+					vm,
+					eei_vm_insturction_function2,
+					index | ( (arity == 1) ? 0 : (1 << (eei_vm_immediate_bits - 1)) ));
+	}
+	else if (arity != 0)
 	{
 		const ee_parser_reply reply =
 				eei_vmmake_append_instruction(vm, eei_vm_insturction_arity, arity);
@@ -1874,6 +1887,23 @@ ee_evaluator_reply eei_vm_execute(const eei_vm_environment * vm_environment)
 				rt.accumulator =
 						((*rt.instruction++) >> eei_vm_immediate_shift)
 						& eei_vm_mask_immediate_shifted;
+
+				//fall through
+
+			case eei_vm_insturction_function2:
+				if (rt.arity == 0)
+				{
+					//Only execute this is we did not come directly from the case above
+
+					//Set the arity according to the high bit of the accumulator
+					rt.arity =
+							(rt.accumulator & (1 << (eei_vm_immediate_bits - 1)))
+							? 2
+							: 1;
+
+					//Clear that bit to use the rest as the index
+					rt.accumulator &= ~(1 << (eei_vm_immediate_bits - 1));
+				}
 
 				//fall through
 
