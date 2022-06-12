@@ -675,6 +675,9 @@ struct eei_parser_node_
 //	of functional recursion to hold the parser data
 typedef struct
 {
+	//TODO: Combine next & precedence into a rule and use the access macros
+	//TODO: Breakout the stack_top into a separate vector of node_index/top, to save on alignment and space.
+	//TODO: The maximum size of the vector is KNOWN - it is the count of starting delimiters in the expression!
 	//Location of the stack
 	eei_parser_node * stack;
 
@@ -1965,8 +1968,18 @@ ee_evaluator_reply eei_vm_execute(const eei_vm_environment * vm_environment)
 typedef struct
 {
 	ee_compilation_header header;
-	ee_environment_element data[1];
+
+	char data[1];
 } eei_compilation_struct;
+
+typedef struct
+{
+	ee_memory_size constants;
+	ee_memory_size variables;
+	ee_memory_size functions;
+	ee_memory_size instructions;
+	ee_memory_size stack;
+} eei_environment_offsets;
 
 //Internal direct data held inside an execution environment
 typedef struct
@@ -1974,15 +1987,12 @@ typedef struct
 	ee_environment_header header;
 
 	//Byte offsets from "data" for the various tables
-	ee_memory_size constants;
-	ee_memory_size variables;
-	ee_memory_size functions;
-	ee_memory_size instructions;
+	eei_environment_offsets offsets;
 
 	//Count of instructions
 	ee_element_count instruction_count;
 
-	ee_environment_element data[1];
+	char data[1];
 } eei_environment_struct;
 
 void eei_guestimate_calculate_sizes(ee_data_size * size)
@@ -2006,46 +2016,95 @@ void eei_guestimate_calculate_sizes(ee_data_size * size)
 			+ alignof(ee_variable_type) + size->stack_size;
 }
 
-char * eei_environment_init(
-		eei_environment_struct * environment,
+char * eei_environment_calculate_offsets(
+		eei_environment_offsets * offsets,
+		char * base,
 		const ee_data_size * size)
 {
 	//Calculate the memory locations of all tables
 
-	char * base = (char *)&environment->data[0];
 	char * ptr = base;
 
 	//Constants
 	while ((ptrdiff_t)ptr % alignof(ee_variable_type))
 		ptr++;
 
-	environment->constants = (int)(ptr - base);
+	offsets->constants = (int)(ptr - base);
 	ptr += sizeof(ee_variable_type) * size->constants;
 
 	//Variables
 	while ((ptrdiff_t)ptr % alignof(const ee_variable_type*))
 		ptr++;
 
-	environment->variables = (int)(ptr - base);
+	offsets->variables = (int)(ptr - base);
 	ptr += sizeof(const ee_variable_type*) * size->variables;
 
 	//Functions
 	while ((ptrdiff_t)ptr % alignof(ee_function))
 		ptr++;
 
-	environment->functions = (int)(ptr - base);
+	offsets->functions = (int)(ptr - base);
 	ptr += sizeof(ee_function) * size->functions;
 
 	//Instructions
 	while ((ptrdiff_t)ptr % alignof(eei_vm_bytecode))
 		ptr++;
 
-	environment->instructions = (int)(ptr - base);
+	offsets->instructions = (int)(ptr - base);
 	ptr += sizeof(eei_vm_bytecode) * size->instructions;
+
+	//Runtime stack
+	while ((ptrdiff_t)ptr % alignof(ee_variable_type))
+		ptr++;
+
+	offsets->stack = (int)(ptr - base);
+	ptr += sizeof(ee_variable_type) * size->runtime_stack;
 
 	return ptr;
 }
 
+char * eei_environment_calculate_pointers(
+		eei_vmmake_data * pointers,
+		eei_environment_offsets * offsets,
+		char * base)
+{
+	pointers->constants = (ee_variable_type*)(base + offsets->constants);
+	pointers->variables = (const ee_variable_type**)(base + offsets->variables);
+	pointers->functions = (ee_function*)(base + offsets->functions);
+	pointers->instructions = (eei_vm_bytecode*)(base + offsets->instructions);
+
+	return 	base + offsets->stack;
+}
+
+void eei_environment_compact(
+		eei_environment_struct * environment,
+		ee_data_size * size,
+		const eei_parser * parser)
+{
+	//Calculate the new offset and pointers
+	//The offsets are immediately saved to the environment since we don't need them anymore
+	eei_vmmake_data pointers;
+	eei_environment_calculate_offsets(&environment->offsets, &environment->data[0], size);
+	eei_environment_calculate_pointers(&pointers, &environment->offsets, &environment->data[0]);
+
+	//Copy over the data
+
+	if (pointers.constants != parser->vm.data.constants)
+		for (int i = 0; i < size->constants; ++i)
+			pointers.constants[i] = parser->vm.data.constants[i];
+
+	if (pointers.variables != parser->vm.data.variables)
+		for (int i = 0; i < size->variables; ++i)
+			pointers.variables[i] = parser->vm.data.variables[i];
+
+	if (pointers.functions != parser->vm.data.functions)
+		for (int i = 0; i < size->functions; ++i)
+			pointers.functions[i] = parser->vm.data.functions[i];
+
+	if (pointers.instructions != parser->vm.data.instructions)
+		for (int i = 0; i < size->instructions; ++i)
+			pointers.instructions[i] = parser->vm.data.instructions[i];
+}
 
 //External API
 //------------
@@ -2150,14 +2209,14 @@ ee_parser_reply ee_compile(
 	parser.vm.max.instructions = size->instructions;
 
 	//Calculate the VM tables memory locations
-	ptr = eei_environment_init(full_env, size);
+	ptr = eei_environment_calculate_offsets(&full_env->offsets,(char *)&full_env->data[0],size);
 	full_env->instruction_count = parser.vm.max.instructions;
 
 	//Setup the VM tables memory
-	parser.vm.data.constants = (ee_variable_type*)((char *)&full_env->data[0] + full_env->constants);
-	parser.vm.data.variables = (const ee_variable_type**)((char *)&full_env->data[0] + full_env->variables);
-	parser.vm.data.functions = (ee_function*)((char *)&full_env->data[0] + full_env->functions);
-	parser.vm.data.instructions = (eei_vm_bytecode*)((char *)&full_env->data[0] + full_env->instructions);
+	eei_environment_calculate_pointers(
+			&parser.vm.data,
+			&full_env->offsets,
+			(char *)&full_env->data[0]);
 
 	//Reset the stack info since the parser will count the actual stack usage
 	parser.vm.max.stack = 0;
@@ -2167,27 +2226,23 @@ ee_parser_reply ee_compile(
 	eei_parse_expression(&parser, expression);
 
 	//Fill back data
-	full_env->instruction_count = parser.vm.current.instructions;
 
-	//TODO: Compress data
-
-	//Find the location of the stack if it is to be allocated inside the environment
-	while ((ptrdiff_t)ptr % alignof(ee_variable_type))
-		ptr++;
-
-	environment->stack = (ee_variable_type *)ptr;
-
-	//Report the actual runtime stack usage
-	environment->max_stack = parser.vm.max.stack;
-
-	//Report the actual compilation stack usage
-	size->compilation_stack = parser.stack.high;
-
+	//Setup the new sizes
 	size->constants = parser.vm.current.constants;
 	size->variables = parser.vm.current.variables;
 	size->functions = parser.vm.current.functions;
 	size->instructions = parser.vm.current.instructions;
+
+	//Fill the actually used compilation stack size
+	size->compilation_stack = parser.stack.high;
+
+	//Fill the calculate maximum runtime stack size
 	size->runtime_stack = parser.vm.max.stack;
+
+	full_env->instruction_count = parser.vm.current.instructions;
+
+	//TODO: Allow to disable the compaction
+	eei_environment_compact(full_env, size, &parser);
 	eei_guestimate_calculate_sizes(size);
 
 	if ((parser.status == ee_parser_ok) && (parser.vm.current.instructions == 0))
@@ -2207,14 +2262,19 @@ ee_evaluator_reply ee_evaluate(ee_environment environment, ee_variable result)
 	//Fill the VM environment
 	{
 		eei_environment_struct * full_env = (eei_environment_struct *)environment;
+		eei_vmmake_data pointers;
 
 		//Setup the VM tables memory
-		vm_environment.constants = (ee_variable_type*)((char *)&full_env->data[0] + full_env->constants);
-		vm_environment.variables = (const ee_variable_type**)((char *)&full_env->data[0] + full_env->variables);
-		vm_environment.functions = (ee_function*)((char *)&full_env->data[0] + full_env->functions);
-		vm_environment.instructions = (eei_vm_bytecode*)((char *)&full_env->data[0] + full_env->instructions);
+		char * ptr = eei_environment_calculate_pointers(
+				&pointers,
+				&full_env->offsets,
+				(char *)&full_env->data[0]);
 
-		vm_environment.stack = full_env->header.stack;
+		vm_environment.constants = pointers.constants;
+		vm_environment.variables = (const ee_variable_type**)pointers.variables;
+		vm_environment.functions = pointers.functions;
+		vm_environment.instructions = pointers.instructions;
+		vm_environment.stack = (ee_variable_type*)ptr;
 		vm_environment.instruction_count = full_env->instruction_count;
 	}
 

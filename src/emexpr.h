@@ -13,6 +13,9 @@
 extern "C" {
 #endif
 
+//User modifiable types
+//---------------------
+
 //The underlying type of an expression character
 typedef char ee_char_type;
 
@@ -25,6 +28,10 @@ typedef signed char ee_element_count;
 //The type of the variable handled by the engine
 //This type must be copyable by the compiler using the assignment(=) syntax!
 typedef double ee_variable_type;
+
+
+//API types
+//---------
 
 //A pointer to a user visible variable
 typedef ee_variable_type * ee_variable;
@@ -264,9 +271,6 @@ typedef struct
 	ee_element_count runtime_stack;
 } ee_data_size;
 
-//Basic allocation element for the environment
-typedef int ee_environment_element;
-
 //Semi-transparent header of the compilation environment
 typedef struct
 {
@@ -281,14 +285,6 @@ typedef struct
 typedef struct
 {
 	int flags;
-
-	//Pre-allocated runtime stack
-	//This can be modified to any correctly aligned pointer
-	//	to a suitable memory before executing ee_evaluate
-	ee_variable_type * stack;
-
-	//Max runtime stack depth, in count of of ee_variable_type elements
-	ee_element_count max_stack;
 } ee_environment_header;
 
 //Typedef to simply the interface
