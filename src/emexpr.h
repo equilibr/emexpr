@@ -126,6 +126,10 @@ typedef enum
 	//All is well
 	ee_parser_ok = 0,
 
+	//All is well but the expression is empty
+	//	and will not return a result.
+	ee_parser_empty,
+
 	//A generic, unspedicied, error
 	ee_parser_error,
 

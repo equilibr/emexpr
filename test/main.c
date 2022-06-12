@@ -117,7 +117,7 @@ ee_compilation_data global_compilation_data =
 void test_print_sizes(const ee_data_size * sizes)
 {
 	printf(
-				"compile: %04d; execute: %04d; const: %04d; var: %04d; func: %04d; vm: %04d; stack: %04d;",
+				"parse: %04d; exec: %04d; const: %04d; var: %04d; func: %04d; vm: %04d; stack: %04d;",
 				sizes->compilation_size,
 				sizes->full_environment_size,
 				sizes->constants,
@@ -127,11 +127,21 @@ void test_print_sizes(const ee_data_size * sizes)
 				sizes->runtime_stack);
 }
 
-const char * parser_status_string(ee_evaluator_reply reply)
+void test_print_location(const char * expression, const ee_compilation_header * header)
+{
+	int length = header->error_token_end - header->error_token_start;
+	int position = header->error_token_start - expression;
+	printf("{%d %d} ",position, length);
+	if (length)
+		printf("%.*s",length, header->error_token_start);
+}
+
+const char * parser_status_string(ee_parser_reply reply)
 {
 	static const char * strings[] =
 	{
 		"ok",
+		"empty",
 		"error",
 		"stack error",
 		"stack underflow",
@@ -142,7 +152,7 @@ const char * parser_status_string(ee_evaluator_reply reply)
 		"var. overflow",
 		"func. overflow",
 		"unknown var",
-		"duplicate varfunc",
+		"dup. varfunc",
 		"no func.",
 		"no prefix",
 		"no infix",
@@ -186,8 +196,10 @@ int test_expression(const char * expression)
 	reply = ee_compile(expression, &sizes, &global_parser.header, &global_environment.header, &global_compilation_data);
 	if (reply)
 	{
-		printf("compile: %s; ",parser_status_string(reply));
+		printf("%16s; ",parser_status_string(reply));
 		test_print_sizes(&sizes);
+		printf(" ");
+		test_print_location(expression, &global_parser.header);
 		printf("\n");
 		return 1;
 	}
@@ -196,7 +208,7 @@ int test_expression(const char * expression)
 	ee_evaluator_reply ereply = ee_evaluate(&global_environment.header, &result);
 	if (reply || ereply > ee_evaluator_empty)
 	{
-		printf("compile: %s; eval: %s; ",parser_status_string(reply), eval_status_string(ereply));
+		printf("compile: %16s; eval: %s; ",parser_status_string(reply), eval_status_string(ereply));
 		test_print_sizes(&sizes);
 		printf("\n");
 		return 1;
@@ -209,9 +221,6 @@ int test_expression(const char * expression)
 
 int main()
 {
-//	test_expression(")1+");
-//	return 0;
-
 	test_expression("1 m");
 	test_expression("1 M * 1 m");
 	test_expression("2 + 1 M * 1 m");
@@ -253,17 +262,18 @@ int main()
 	test_expression("(1)");
 
 	test_expression("((1))");
-//	return 0;
-
-
-	//TODO: Refuse incorrect grammar
-	test_expression("(1+");
-	test_expression(")1+");
 
 	//TODO: Mark empty expression during parsing!
 	test_expression("");
 	test_expression("()");
 	test_expression("(())");
+
+	//Refuse incorrect grammar
+	test_expression("(1+");
+	test_expression(")1+");
+	test_expression("1+(");
+	test_expression("1+)");
+	test_expression("novar");
 
 	return 0;
 }

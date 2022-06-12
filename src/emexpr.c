@@ -1725,17 +1725,18 @@ ee_parser_reply eei_rule_handler_function(eei_parser * parser, const eei_parser_
 		return reply;
 
 	if (GET_TOKEN_TYPE(identifier.rule->rule) != eei_token_identifier)
-	{
 		return eei_parse_set_error(
 					parser,
 					ee_parser_expression_identifier_expected,
 					&((eei_parser_token){GET_TOKEN(identifier.rule->rule), identifier.token_start, identifier.token_end}));
-	}
 
 	ee_function op = eei_parse_symbols_get_function(parser, identifier.group_items, &identifier);
 
 	if (!op)
-		return ee_parser_function_not_implemented	;
+		return eei_parse_set_error(
+					parser,
+					ee_parser_function_not_implemented,
+					&((eei_parser_token){GET_TOKEN(identifier.rule->rule), identifier.token_start, identifier.token_end}));
 
 	return eei_vmmake_execute_functions(&parser->vm, op, identifier.group_items);
 }
@@ -2120,11 +2121,14 @@ ee_parser_reply ee_compile(
 	size->runtime_stack = parser.vm.max.stack;
 	eei_guestimate_calculate_sizes(size);
 
-	compilation->reply = parser.status;
+	if ((parser.status == ee_parser_ok) && (parser.vm.current.instructions == 0))
+		compilation->reply = ee_parser_empty;
+	else
+		compilation->reply = parser.status;
 	compilation->error_token_start = parser.error_token.start;
 	compilation->error_token_end = parser.error_token.end;
 
-	return parser.status;
+	return compilation->reply;
 }
 
 ee_evaluator_reply ee_evaluate(ee_environment environment, ee_variable result)
