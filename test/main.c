@@ -209,8 +209,7 @@ int test_expression(const char * expression)
 
 int main()
 {
-	test_expression("a");
-//	test_expression("2 * 3 + 4");
+//	test_expression(")1+");
 //	return 0;
 
 	test_expression("1 m");

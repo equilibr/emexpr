@@ -644,7 +644,7 @@ int eei_find_end_rule(eei_token token, eei_rule_description rule)
 		table++;
 	}
 
-	return table[0][1] != MAKE_SENTINEL_RULE();
+	return table[0][0] != MAKE_SENTINEL_RULE();
 }
 
 
@@ -1380,6 +1380,9 @@ static inline void eei_parse_parseInfix(
 				token);
 
 	if (GET_TOKEN_TYPE(rule->rule) == eei_token_delimiter)
+		//Push a special group to reset the precedence inside the delimited group
+		//	without affecting the precedence processing of the tokens that will
+		//	follow the group.
 		eei_parse_pushGroupRule(parser, token);
 }
 
