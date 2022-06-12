@@ -269,9 +269,6 @@ typedef struct
 	ee_parser_reply reply;
 	const ee_char_type * error_token_start;
 	const ee_char_type * error_token_end;
-
-	//Start of internal data. Used to simplify alignment.
-	ee_environment_element internal[1];
 } ee_compilation_header;
 
 //Semi-transparent header of the environment
@@ -286,9 +283,6 @@ typedef struct
 
 	//Max runtime stack depth, in count of of ee_variable_type elements
 	int max_stack;
-
-	//Start of internal data. Used to simplify alignment.
-	ee_environment_element internal[1];
 } ee_environment_header;
 
 //Typedef to simply the interface

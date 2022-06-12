@@ -1964,6 +1964,12 @@ ee_evaluator_reply eei_vm_execute(const eei_vm_environment * vm_environment)
 //Helper structure to simplify alignment management
 typedef struct
 {
+	ee_compilation_header header;
+	ee_environment_element data[1];
+} eei_compilation_struct;
+
+typedef struct
+{
 	ee_environment_header header;
 
 	//Byte offsets from "data" for the various tables
@@ -1976,16 +1982,16 @@ typedef struct
 	int instruction_count;
 
 	ee_environment_element data[1];
-} ee_environment_struct;
+} eei_environment_struct;
 
 void eei_guestimate_calculate_sizes(ee_data_size * size)
 {
 	size->compilation_size =
-			sizeof(ee_compilation_header)
+			sizeof(eei_compilation_struct)
 			+ alignof(eei_parser_node) + sizeof(eei_parser_node) * size->compilation_stack;
 
 	size->environment_size =
-			sizeof(ee_environment_struct)
+			sizeof(eei_environment_struct)
 			+ alignof(ee_variable_type) + sizeof(ee_variable_type) * size->constants
 			+ alignof(ee_variable_type) + sizeof(ee_variable_type) * size->variables
 			+ alignof(ee_function) + sizeof(ee_function) * size->functions
@@ -2000,7 +2006,7 @@ void eei_guestimate_calculate_sizes(ee_data_size * size)
 }
 
 char * eei_environment_init(
-		ee_environment_struct * environment,
+		eei_environment_struct * environment,
 		const ee_data_size * size)
 {
 	//Calculate the memory locations of all tables
@@ -2116,12 +2122,14 @@ ee_parser_reply ee_compile(
 		ee_environment environment,
 		const ee_compilation_data *data)
 {
-	ee_environment_struct * full_env = (ee_environment_struct *)environment;
+	eei_environment_struct * full_env = (eei_environment_struct *)environment;
 	eei_parser parser;
 
 	//Setup the parser stack memory
 
-	char * ptr = (char *)&compilation->internal[0];
+	eei_compilation_struct * full_compilation = (eei_compilation_struct *)compilation;
+
+	char * ptr = (char *)&full_compilation->data[0];
 	while ((ptrdiff_t)ptr % alignof(eei_parser_node))
 		ptr++;
 
@@ -2197,7 +2205,7 @@ ee_evaluator_reply ee_evaluate(ee_environment environment, ee_variable result)
 
 	//Fill the VM environment
 	{
-		ee_environment_struct * full_env = (ee_environment_struct *)environment;
+		eei_environment_struct * full_env = (eei_environment_struct *)environment;
 
 		//Setup the VM tables memory
 		vm_environment.constants = (ee_variable_type*)((char *)&full_env->data[0] + full_env->constants);
