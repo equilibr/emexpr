@@ -78,6 +78,16 @@ int arity(int arity, const ee_variable actuals, ee_variable result)
 	return 0;
 }
 
+int acuum(int arity, const ee_variable actuals, ee_variable result)
+{
+	ee_variable_type sum = 0;
+	for (int i = 0; i < arity; ++i)
+		sum += actuals[i];
+
+	*result = sum;
+	return 0;
+}
+
 //Global handling functions
 
 ee_compilation_data_function funcData[] = {
@@ -90,10 +100,11 @@ ee_compilation_data_function funcData[] = {
 	{pi, 0},
 	{unity,1},
 	{arity,-1},
+	{acuum, -1},
 	{0,0}
 };
 
-const char * funcNames[] = {"-","-","+","*","M","m","pi","unity","arity"};
+const char * funcNames[] = {"-","-","+","*","M","m","pi","unity","arity","acuum"};
 
 ee_variable_type var1, var2;
 
@@ -173,7 +184,8 @@ const char * parser_status_string(ee_parser_reply reply)
 		"expression",
 		"rouge end",
 		"not constants",
-		"not identifier"
+		"not identifier",
+		"empty group"
 	};
 
 	return strings[reply];
@@ -241,6 +253,9 @@ int test_expression(const char * expression)
 int main()
 {
 	test_print_header();
+//	test_expression("(1,2)");
+//	test_expression("arity(1,2)");
+//	return 0;
 
 	test_expression("1 m");
 	test_expression("1 M * 1 m");
@@ -255,6 +270,10 @@ int main()
 	test_expression("arity()");
 	test_expression("arity(0)");
 	test_expression("arity(0,0)");
+	test_expression("acuum()");
+	test_expression("acuum(1)");
+	test_expression("acuum(1+2,-3)");
+	test_expression("acuum(pi(),pi)");
 
 	var1 = 1;
 	test_expression("a");

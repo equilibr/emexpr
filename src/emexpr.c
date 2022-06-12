@@ -288,10 +288,10 @@ typedef struct
 //----------------------------------------
 ee_parser_reply eei_rule_handler_number(eei_parser * parser, const eei_parser_node * node);
 ee_parser_reply eei_rule_handler_variable(eei_parser * parser, const eei_parser_node * node);
+ee_parser_reply eei_rule_handler_group(eei_parser * parser, const eei_parser_node * node);
 ee_parser_reply eei_rule_handler_prefix(eei_parser * parser, const eei_parser_node * node);
 ee_parser_reply eei_rule_handler_infix(eei_parser * parser, const eei_parser_node * node);
 ee_parser_reply eei_rule_handler_postfix(eei_parser * parser, const eei_parser_node * node);
-ee_parser_reply eei_rule_handler_comma(eei_parser * parser, const eei_parser_node * node);
 ee_parser_reply eei_rule_handler_function(eei_parser * parser, const eei_parser_node * node);
 
 //Parser rules
@@ -517,7 +517,7 @@ static const eei_rule_item eei_parser_prefix_rules[] =
 	HANDLE(MAKE_TERMINAL_PREFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_identifier),1), eei_rule_handler_variable),
 
 	//Grouping parens
-	STATE(MAKE_DELIMITED_PREFIX_RULE(MAKE_TOKEN(eei_token_delimiter,'('))),
+	HANDLE(MAKE_DELIMITED_PREFIX_RULE(MAKE_TOKEN(eei_token_delimiter,'(')), eei_rule_handler_group),
 
 	HANDLE(MAKE_DEFAULT_PREFIX_RULE(MAKE_TOKEN(eei_token_operator,'!')), eei_rule_handler_prefix),
 	HANDLE(MAKE_DEFAULT_PREFIX_RULE(MAKE_TOKEN(eei_token_operator,'~')), eei_rule_handler_prefix),
@@ -532,7 +532,7 @@ static const eei_rule_item eei_parser_prefix_rules[] =
 static const eei_rule_item eei_parser_infix_rules[] =
 {
 	//Sequence delimiter
-	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_delimiter,','), eei_precedence_comma), eei_rule_handler_comma),
+	STATE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_delimiter,','), eei_precedence_comma)),
 
 	//Function call
 	HANDLE(MAKE_DELIMITED_INFIX_RULE(MAKE_TOKEN(eei_token_delimiter,'('), eei_precedence_function), eei_rule_handler_function),
@@ -666,9 +666,9 @@ struct eei_parser_node_
 	//The precedence of the current node
 	eei_precedence precedence;
 
-	//For rules creating a group this holds the number
-	//	of direct items in said group.
-	int group_items;
+	//_Execution_ stack index when this node was pushed.
+	//Used to calculate arity of functions and validate groups are correct.
+	int stack_top;
 };
 
 //Holds management data for the parser stack that is used instead
@@ -699,7 +699,7 @@ ee_parser_reply eei_stack_copynode(eei_parser_node * dst, const eei_parser_node 
 	dst->token_end = src->token_end;
 	dst->next = src->next;
 	dst->precedence = src->precedence;
-	dst->group_items = src->group_items;
+	dst->stack_top = src->stack_top;
 
 	return ee_parser_ok;
 }
@@ -1080,7 +1080,7 @@ static inline ee_parser_reply eei_parse_push(
 	node.rule = rule;
 	node.next = next;
 	node.precedence = precedence;
-	node.group_items = 0;
+	node.stack_top = parser->vm.current.stack;
 
 	return eei_parse_error(parser, eei_stack_push(&parser->stack, &node), token);
 }
@@ -1123,7 +1123,7 @@ static inline ee_parser_reply eei_parse_pushGroupRule(
 	node.rule = &eei_parser_group_rule;
 	node.next = eei_rule_prefix;
 	node.precedence = 0;
-	node.group_items = 0;
+	node.stack_top = parser->vm.current.stack;
 
 	//Update the current group to the point the current stack top
 	//	since that must be the rule that created this group
@@ -1386,7 +1386,7 @@ static inline void eei_parse_parseInfix(
 				: GET_RULE_PRECEDENCE(rule->rule) - 1,
 				token);
 
-	if (GET_TOKEN_TYPE(rule->rule) == eei_token_delimiter)
+	if (GET_RULE_ENDDELIMITER(rule->rule))
 		//Push a special group to reset the precedence inside the delimited group
 		//	without affecting the precedence processing of the tokens that will
 		//	follow the group.
@@ -1679,6 +1679,19 @@ ee_parser_reply eei_rule_handler_variable(eei_parser * parser, const eei_parser_
 
 	if (op)
 		return eei_vmmake_execute_functions(&parser->vm, op, 0);
+
+	return ee_parser_error;
+}
+
+ee_parser_reply eei_rule_handler_group(eei_parser * parser, const eei_parser_node * node)
+{
+	//A group must end with exactly ONE new value on the runtime stack
+	const int items = parser->vm.current.stack - node->stack_top;
+
+	if (items == 1)
+		return ee_parser_ok;
+	else
+		return ee_parser_expression_empty_group;
 }
 
 ee_parser_reply eei_rule_handler_prefix(eei_parser * parser, const eei_parser_node * node)
@@ -1711,12 +1724,6 @@ ee_parser_reply eei_rule_handler_postfix(eei_parser * parser, const eei_parser_n
 	return eei_vmmake_execute_functions(&parser->vm, op, 1);
 }
 
-
-ee_parser_reply eei_rule_handler_comma(eei_parser * parser, const eei_parser_node * node)
-{
-	return ee_parser_function_not_implemented;
-}
-
 ee_parser_reply eei_rule_handler_function(eei_parser * parser, const eei_parser_node * node)
 {
 	//An identifier must be on the stack at this point
@@ -1737,8 +1744,9 @@ ee_parser_reply eei_rule_handler_function(eei_parser * parser, const eei_parser_
 					ee_parser_expression_identifier_expected,
 					&((eei_parser_token){GET_TOKEN(identifier.rule->rule), identifier.token_start, identifier.token_end}));
 
+	const int arity = parser->vm.current.stack - identifier.stack_top;
 	int wrong_arity;
-	ee_function op = eei_parse_symbols_get_function(parser, identifier.group_items, &identifier, &wrong_arity);
+	ee_function op = eei_parse_symbols_get_function(parser, arity, &identifier, &wrong_arity);
 
 	if (!op)
 		return eei_parse_set_error(
@@ -1748,7 +1756,7 @@ ee_parser_reply eei_rule_handler_function(eei_parser * parser, const eei_parser_
 					: ee_parser_function_not_implemented,
 					&((eei_parser_token){GET_TOKEN(identifier.rule->rule), identifier.token_start, identifier.token_end}));
 
-	return eei_vmmake_execute_functions(&parser->vm, op, identifier.group_items);
+	return eei_vmmake_execute_functions(&parser->vm, op, arity);
 }
 
 //Virtual machine execute

@@ -194,6 +194,9 @@ typedef enum
 
 	//An identifier (usually function name) was expected
 	ee_parser_expression_identifier_expected,
+
+	//An empty group (enclosed in parens) was specified
+	ee_parser_expression_empty_group,
 } ee_parser_reply;
 
 //Status returned by the evaluator
