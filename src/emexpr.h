@@ -180,7 +180,10 @@ typedef enum
 	ee_parser_expression_unmatched_end,
 
 	//Something that looked like a constant, but was not an actual constant, was encountered
-	ee_parser_expression_not_a_constant
+	ee_parser_expression_not_a_constant,
+
+	//An identifier (usually function name) was expected
+	ee_parser_expression_identifier_expected,
 } ee_parser_reply;
 
 //Status returned by the evaluator

@@ -60,6 +60,12 @@ int milli(int arity, const ee_variable actuals, ee_variable result)
 	return 0;
 }
 
+int pi(int arity, const ee_variable actuals, ee_variable result)
+{
+	*result = 3;
+	return 0;
+}
+
 //Global handling functions
 
 ee_compilation_data_function funcData[] = {
@@ -69,10 +75,11 @@ ee_compilation_data_function funcData[] = {
 	{mul,2},
 	{mega,1},
 	{milli,1},
+	{pi, 0},
 	{0,0}
 };
 
-const char * funcNames[] = {"-","-","+","*","M","m"};
+const char * funcNames[] = {"-","-","+","*","M","m","pi"};
 
 ee_variable_type var1, var2;
 
@@ -151,19 +158,22 @@ int main()
 //	test_expression("1 M * 1 m");
 //	return 0;
 
+	test_expression("pi()");
+
 	var1 = 1;
 	test_expression("a");
 	test_expression("a + 1");
 	var1 = 10;
 	test_expression("a");
 	test_expression("a * 2");
-	return 0;
+//	return 0;
 
 
 	test_expression("2 * 2");
 	test_expression("2 * -2");
 	test_expression("-2 * -2");
-	test_expression("2 * 4 + 4");
+	test_expression("2 * 3 + 4");
+	test_expression("2 * (3 + 4)");
 	test_expression("2 + 3 * 4");
 	test_expression("(2 + 3) * 4");
 
@@ -177,7 +187,7 @@ int main()
 	test_expression("(1)");
 
 	test_expression("((1))");
-	return 0;
+//	return 0;
 
 
 	//TODO: Refuse incorrect grammar

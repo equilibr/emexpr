@@ -292,6 +292,7 @@ ee_parser_reply eei_rule_handler_prefix(eei_parser * parser, const eei_parser_no
 ee_parser_reply eei_rule_handler_infix(eei_parser * parser, const eei_parser_node * node);
 ee_parser_reply eei_rule_handler_postfix(eei_parser * parser, const eei_parser_node * node);
 ee_parser_reply eei_rule_handler_comma(eei_parser * parser, const eei_parser_node * node);
+ee_parser_reply eei_rule_handler_function(eei_parser * parser, const eei_parser_node * node);
 
 //Parser rules
 //------------
@@ -523,7 +524,7 @@ static const eei_rule_item eei_parser_infix_rules[] =
 	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_delimiter,','), eei_precedence_comma), eei_rule_handler_comma),
 
 	//Function call
-	STATE(MAKE_DELIMITED_INFIX_RULE(MAKE_TOKEN(eei_token_delimiter,'('), eei_precedence_function)),
+	HANDLE(MAKE_DELIMITED_INFIX_RULE(MAKE_TOKEN(eei_token_delimiter,'('), eei_precedence_function), eei_rule_handler_function),
 
 	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'|'), eei_precedence_logical_or), eei_rule_handler_infix),
 	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'&'), eei_precedence_logical_and), eei_rule_handler_infix),
@@ -1701,6 +1702,36 @@ ee_parser_reply eei_rule_handler_postfix(eei_parser * parser, const eei_parser_n
 ee_parser_reply eei_rule_handler_comma(eei_parser * parser, const eei_parser_node * node)
 {
 	return ee_parser_function_not_implemented;
+}
+
+ee_parser_reply eei_rule_handler_function(eei_parser * parser, const eei_parser_node * node)
+{
+	//An identifier must be on the stack at this point
+	eei_parser_node identifier;
+
+	ee_parser_reply reply =
+			eei_parse_popT(
+				parser,
+				&identifier,
+				&((eei_parser_token){GET_TOKEN(node->rule->rule), node->token_start, node->token_end}));
+
+	if (reply != ee_parser_ok)
+		return reply;
+
+	if (GET_TOKEN_TYPE(identifier.rule->rule) != eei_token_identifier)
+	{
+		return eei_parse_set_error(
+					parser,
+					ee_parser_expression_identifier_expected,
+					&((eei_parser_token){GET_TOKEN(identifier.rule->rule), identifier.token_start, identifier.token_end}));
+	}
+
+	ee_function op = eei_parse_symbols_get_function(parser, identifier.group_items, &identifier);
+
+	if (!op)
+		return ee_parser_function_not_implemented	;
+
+	return eei_vmmake_execute_functions(&parser->vm, op, identifier.group_items);
 }
 
 //Virtual machine execute
