@@ -265,7 +265,7 @@ int main()
 	test_expression("pi()");
 	test_expression("pi");
 	test_expression("unity()");
-	test_expression("unity(0)");
+	test_expression("unity(pi())");
 	test_expression("unity(1+1)");
 	test_expression("arity()");
 	test_expression("arity(0)");
@@ -303,7 +303,7 @@ int main()
 
 	test_expression("((1))");
 
-	//TODO: Mark empty expression during parsing!
+	//Mark empty expression during parsing!
 	test_expression("");
 	test_expression("()");
 	test_expression("(())");
@@ -314,6 +314,7 @@ int main()
 	test_expression("1+(");
 	test_expression("1+)");
 	test_expression("novar");
+	test_expression("arity(1+(),(2))");
 
 	return 0;
 }
