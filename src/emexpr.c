@@ -1388,22 +1388,14 @@ void eei_parse_parsePostfix(
 		const eei_rule_item * rule,
 		const eei_parser_token * token)
 {
-	eei_parser_node node;
-
-	node.token_start = token->start;
-	node.token_end = token->end;
-	node.rule = rule;
-	node.next = GET_RULE_NEXT(rule->rule);
-	node.precedence = GET_RULE_PRECEDENCE(rule->rule);
-
-	eei_parse_done_node(parser, &node);
-
-	if (eei_parse_test_pop(parser, 0) != ee_parser_ok)
-		return;
-
-	//Since this node is never pushed we need to adjust
-	//	the stack top with the correct next
-	eei_stack_top(&parser->stack, 0)->next = node.next;
+	eei_parse_push(
+				parser,
+				rule,
+				GET_RULE_NEXT(rule->rule),
+				(GET_RULE_ACCOSIATIVITY(rule->rule) == eei_rule_left)
+				? GET_RULE_PRECEDENCE(rule->rule)
+				: GET_RULE_PRECEDENCE(rule->rule) - 1,
+				token);
 }
 
 void eei_parse_foldPrefix(eei_parser * parser, int delay)
