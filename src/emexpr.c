@@ -1359,10 +1359,18 @@ static inline void eei_parse_parseInfix(
 		const eei_rule_item * rule,
 		const eei_parser_token * token)
 {
+	const int delimited = GET_RULE_ENDDELIMITER(rule->rule);
 	eei_parser_node node;
 
-	if (eei_parse_popT(parser, &node, token) != ee_parser_ok)
-		return;
+	if (!delimited)
+	{
+		//This is a delimited infix rule.
+		//It should preserve whatever is at the stack top becase
+		//	it will be handled specially when THIS rule is unfolded.
+
+		if (eei_parse_popT(parser, &node, token) != ee_parser_ok)
+			return;
+	}
 
 	eei_parse_push(
 				parser,
@@ -1373,9 +1381,10 @@ static inline void eei_parse_parseInfix(
 				: GET_RULE_PRECEDENCE(rule->rule) - 1,
 				token);
 
-	eei_parse_done_node(parser, &node);
+	if (!delimited)
+		eei_parse_done_node(parser, &node);
 
-	if (GET_RULE_TYPE(rule->rule) == eei_token_delimiter)
+	if (GET_TOKEN_TYPE(rule->rule) == eei_token_delimiter)
 		eei_parse_pushGroupRule(parser, token);
 }
 
