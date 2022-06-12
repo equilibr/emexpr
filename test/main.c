@@ -208,8 +208,8 @@ int test_expression(const char * expression)
 
 int main()
 {
-//	test_expression("1 m");
-//	test_expression("1 M * 1 m");
+	test_expression("1 m");
+	test_expression("1 M * 1 m");
 //	return 0;
 
 	test_expression("pi()");

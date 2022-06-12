@@ -318,6 +318,9 @@ enum
 	//Rule description end-delimited flag. Single bit.
 	eei_rule_bits_end_delimiter_size = 1,
 
+	//Rule description delayed fold flag. Single bit.
+	eei_rule_bits_delayed_fold_size = 1,
+
 	//Compound size of a token
 	//The _check_type_sizes struct uses this to validate all parts fit in the data type used for the token
 	eei_rule_bits_token_size = eei_rule_bits_token_char_size + eei_rule_bits_token_type_size,
@@ -377,9 +380,12 @@ enum
 	//Offset for the end-delimited flag of a rule description
 	eei_rule_bits_end_delimiter_offset = eei_rule_bits_accosiativity_offset + eei_rule_bits_accosiativity_size,
 
+	//Offset for the delayed fold flag of a rule description
+	eei_rule_bits_delayed_fold_offset = eei_rule_bits_end_delimiter_offset + eei_rule_bits_end_delimiter_size,
+
 	//Total size of a rule description, in bits
 	//The _check_type_sizes struct uses this to validate all parts fit in the data type used for the rule description
-	eei_rule_bits_total_size = eei_rule_bits_end_delimiter_offset + eei_rule_bits_end_delimiter_size
+	eei_rule_bits_total_size = eei_rule_bits_delayed_fold_offset + eei_rule_bits_delayed_fold_size
 } eei_rule_offsets;
 
 
@@ -416,29 +422,33 @@ enum
 	)
 
 //Create a rule description from its parts
-#define MAKE_RULE_DESCRIPTION(rule, precedence, next, accosiativity, end_delimiter) \
+#define MAKE_RULE_DESCRIPTION(rule, precedence, next, accosiativity, end_delimiter, delayed_fold) \
 	(eei_rule_description)(\
 	MAKE_PART_BITS(rule, eei_rule_bits_rule_offset, eei_rule_bits_rule_size) |\
 	MAKE_PART_BITS(precedence, eei_rule_bits_precedence_offset, eei_rule_bits_precedence_size) |\
 	MAKE_PART_BITS(next, eei_rule_bits_next_offset, eei_rule_bits_next_size) |\
 	MAKE_PART_BITS(accosiativity, eei_rule_bits_accosiativity_offset, eei_rule_bits_accosiativity_size) |\
-	MAKE_PART_BITS(end_delimiter, eei_rule_bits_end_delimiter_offset, eei_rule_bits_end_delimiter_size)\
+	MAKE_PART_BITS(end_delimiter, eei_rule_bits_end_delimiter_offset, eei_rule_bits_end_delimiter_size) |\
+	MAKE_PART_BITS(delayed_fold, eei_rule_bits_delayed_fold_offset, eei_rule_bits_delayed_fold_size)\
 	)
 
 //Make a prefix rule description
-#define MAKE_PREFIX_RULE(token, end_delimiter, next) \
-	MAKE_RULE_DESCRIPTION(MAKE_RULE(token, eei_rule_prefix), 0, next, eei_rule_right, end_delimiter)
+#define MAKE_PREFIX_RULE(token, end_delimiter, delayed_fold, next) \
+	MAKE_RULE_DESCRIPTION(MAKE_RULE(token, eei_rule_prefix), 0, next, eei_rule_right, end_delimiter, delayed_fold)
 
 //Make a default prefix rule description
-#define MAKE_DEFAULT_PREFIX_RULE(token) MAKE_PREFIX_RULE(token, 0, eei_rule_prefix)
+#define MAKE_DEFAULT_PREFIX_RULE(token) MAKE_PREFIX_RULE(token, 0, 0, eei_rule_prefix)
+
+//Make a leaf prefix rule description
+#define MAKE_TERMINAL_PREFIX_RULE(token, delayed_fold) MAKE_PREFIX_RULE(token, 0, delayed_fold, eei_rule_infix)
 
 //Make a delimited prefix rule description
 //The matching rule MUST appear in the end-rules table
-#define MAKE_DELIMITED_PREFIX_RULE(token) MAKE_PREFIX_RULE(token, 1, eei_rule_prefix)
+#define MAKE_DELIMITED_PREFIX_RULE(token) MAKE_PREFIX_RULE(token, 1, 0, eei_rule_prefix)
 
 //Make a infix rule description
 #define MAKE_INFIX_RULE(token, precedence, accosiativity, end_delimiter) \
-	MAKE_RULE_DESCRIPTION(MAKE_RULE(token, eei_rule_infix), precedence, eei_rule_prefix, accosiativity, end_delimiter)
+	MAKE_RULE_DESCRIPTION(MAKE_RULE(token, eei_rule_infix), precedence, eei_rule_prefix, accosiativity, end_delimiter, 0)
 
 //Make a default infix rule description
 #define MAKE_DEFAULT_INFIX_RULE(token, precedence) MAKE_INFIX_RULE(token, precedence, eei_rule_left, 0)
@@ -449,11 +459,11 @@ enum
 
 //Make a default postfix rule description
 #define MAKE_POSTFIX_RULE(token, precedence) \
-	MAKE_RULE_DESCRIPTION(MAKE_RULE(token, eei_rule_postfix), precedence, eei_rule_infix, eei_rule_left, 0)
+	MAKE_RULE_DESCRIPTION(MAKE_RULE(token, eei_rule_postfix), precedence, eei_rule_infix, eei_rule_left, 0, 0)
 
 //Make an end rule to match a delimited rule description
 #define MAKE_END_RULE(token) \
-	MAKE_RULE_DESCRIPTION(MAKE_RULE(token, eei_rule_end), 0, eei_rule_prefix, eei_rule_left, 0)
+	MAKE_RULE_DESCRIPTION(MAKE_RULE(token, eei_rule_end), 0, eei_rule_prefix, eei_rule_left, 0, 0)
 
 //Make a sentinel invalid rule to mark the end of a rules table
 #define MAKE_SENTINEL_RULE() MAKE_DEFAULT_PREFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_error))
@@ -478,6 +488,7 @@ enum
 #define GET_RULE_NEXT(rule) GET_PART_BITS(rule, eei_rule_bits_next_offset, eei_rule_bits_next_size)
 #define GET_RULE_ACCOSIATIVITY(rule) GET_PART_BITS(rule, eei_rule_bits_accosiativity_offset, eei_rule_bits_accosiativity_size)
 #define GET_RULE_ENDDELIMITER(rule) GET_PART_BITS(rule, eei_rule_bits_end_delimiter_offset, eei_rule_bits_end_delimiter_size)
+#define GET_RULE_DELAYEDFOLD(rule) GET_PART_BITS(rule, eei_rule_bits_delayed_fold_offset, eei_rule_bits_delayed_fold_size)
 #define GET_TOKEN_TYPE(rule) GET_PART_BITS(rule, eei_rule_bits_token_type_offset, eei_rule_bits_token_type_size)
 
 //Parser rule tables
@@ -502,8 +513,8 @@ static const eei_rule_item eei_parser_prefix_rules[] =
 	//Expression start
 	STATE(MAKE_DELIMITED_PREFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_sof))),
 
-	HANDLE(MAKE_PREFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_number),0,eei_rule_infix), eei_rule_handler_number),
-	HANDLE(MAKE_PREFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_identifier),0,eei_rule_infix), eei_rule_handler_variable),
+	HANDLE(MAKE_TERMINAL_PREFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_number),0), eei_rule_handler_number),
+	HANDLE(MAKE_TERMINAL_PREFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_identifier),1), eei_rule_handler_variable),
 
 	//Grouping parens
 	STATE(MAKE_DELIMITED_PREFIX_RULE(MAKE_TOKEN(eei_token_delimiter,'('))),
@@ -1411,12 +1422,12 @@ void eei_parse_parsePostfix(
 	eei_stack_top(&parser->stack, 0)->next = node.next;
 }
 
-void eei_parse_foldPrefix(eei_parser * parser)
+void eei_parse_foldPrefix(eei_parser * parser, int delay)
 {
 	//Fold immediately preceeding prefix nodes.
 	//This will stop on any non-prefix node, any special node and,
 	//	also, on any node that expects an end token
-	while (parser->stack.top > 1)
+	while (parser->stack.top)
 	{
 		if (eei_is_internal_token( GET_TOKEN_TYPE(eei_stack_top(&parser->stack, 0)->rule->rule) ))
 			break;
@@ -1424,7 +1435,10 @@ void eei_parse_foldPrefix(eei_parser * parser)
 		if (GET_RULE_ENDDELIMITER(eei_stack_top(&parser->stack, 0)->rule->rule))
 			break;
 
-		if (GET_RULE_TYPE(eei_stack_top(&parser->stack, 1)->rule->rule) != eei_rule_prefix)
+		if (GET_RULE_TYPE(eei_stack_top(&parser->stack, 0)->rule->rule) != eei_rule_prefix)
+			break;
+
+		if (delay && GET_RULE_DELAYEDFOLD(eei_stack_top(&parser->stack, 0)->rule->rule))
 			break;
 
 		eei_parse_done(parser);
@@ -1435,25 +1449,20 @@ void eei_parse_foldPrecedence(eei_parser * parser, const eei_rule_item * rule)
 {
 	const eei_precedence precedence = GET_RULE_PRECEDENCE(rule->rule);
 
-	if (
-		parser->stack.top
-		&& (eei_stack_top(&parser->stack, 0)->precedence >= precedence))
-	{
-		//The current infix/postfix token is of lower precedence than
-		//	the currently top node.
-		//We need to take as a child the node tree that has a precedence
-		//	higher then the current token.
+	//The current infix/postfix token is of lower precedence than
+	//	the currently top node.
+	//We need to take as a child the node tree that has a precedence
+	//	higher then the current token.
 
-		//Fold the nodes until a fold would cause the top node to
-		//	become of a precedence lower than us.
-		//This stop codition ensures that we end this loop
-		//	with the top node at a precedence higher, and the node above
-		//	it with a lower one, than us.
-		while (
-			   (parser->stack.top > 1)
-			   && (eei_stack_top(&parser->stack, 1)->precedence >= precedence))
-			eei_parse_done(parser);
-	}
+	//Fold the nodes until a fold would cause the top node to
+	//	become of a precedence lower than us.
+	//This stop codition ensures that we end this loop
+	//	with the top node at a precedence higher, and the node above
+	//	it with a lower one, than us.
+	while (
+		   (parser->stack.top > 1)
+		   && (eei_stack_top(&parser->stack, 0)->precedence >= precedence))
+		eei_parse_done(parser);
 }
 
 void eei_parse_foldEndDilimiter(
@@ -1548,7 +1557,7 @@ void eei_parse_foldEndDilimiter(
 
 void eei_parse_token(eei_parser * parser, eei_parser_token * token)
 {
-	const eei_rule_type expected = eei_stack_top(&parser->stack, 0)->next;
+	eei_rule_type expected = eei_stack_top(&parser->stack, 0)->next;
 	const eei_rule_item * rule = eei_find_rule(token->token, expected);
 	int foundExpected = IS_RULE_VALID(rule->rule);
 
@@ -1557,6 +1566,7 @@ void eei_parse_token(eei_parser * parser, eei_parser_token * token)
 		//A postfix can appear when not expected - so look for it
 		rule = eei_find_rule(token->token, eei_rule_postfix);
 		foundExpected = IS_RULE_VALID(rule->rule);
+		expected = eei_rule_postfix;
 	}
 
 	if (foundExpected)
@@ -1570,14 +1580,14 @@ void eei_parse_token(eei_parser * parser, eei_parser_token * token)
 			case eei_rule_infix:
 				//Fold all prefixes before going any further
 				//	since they bind stonger than the infixes.
-				eei_parse_foldPrefix(parser);
+				eei_parse_foldPrefix(parser, GET_RULE_ENDDELIMITER(rule->rule));
 
 				eei_parse_foldPrecedence(parser, rule);
 				eei_parse_parseInfix(parser, rule, token);
 				break;
 
 			case eei_rule_postfix:
-				eei_parse_foldPrefix(parser);
+				eei_parse_foldPrefix(parser, 0);
 				eei_parse_foldPrecedence(parser, rule);
 				eei_parse_parsePostfix(parser, rule, token);
 				break;
