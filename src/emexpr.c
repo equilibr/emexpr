@@ -2043,7 +2043,7 @@ ee_parser_reply ee_guestimate(const ee_char_type * expression, ee_data_size * si
 	size->functions = identifiers + operators;
 	size->instructions = numbers + identifiers + operators;
 	size->instructions *= size->instructions;
-	size->compilation_stack = 2 + numbers + identifiers + operators * 2 + groups * 2;
+	size->compilation_stack = 2 + numbers + identifiers + operators * 2 + groups * 4;
 	size->runtime_stack = numbers + actuals + groups * 2 + operators + identifiers;
 
 	eei_guestimate_calculate_sizes(size);
