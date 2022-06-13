@@ -298,7 +298,7 @@ ee_parser_reply eei_rule_handler_function(eei_parser * parser, const eei_parser_
 //------------
 
 //Field sizes of the various parts for the token, rule & rule description
-enum
+typedef enum
 {
 	//Token symbol
 	eei_rule_bits_token_char_size = sizeof(ee_char_type) * __CHAR_BIT__,
@@ -334,7 +334,7 @@ enum
 } eei_rule_sizes;
 
 //Field offsets of the various parts for the token, rule & rule description
-enum
+typedef enum
 {
 	//Global offset for all parts.
 	//Kept here to simplify injecting custom data into the items.
@@ -390,11 +390,11 @@ enum
 
 
 //Create a bitmask of specified width and offset
-#define BITMASK(width) ((( (1ull<<(width - 1)) - 1) << 1) | 1 )
+#define BITMASK(width) ((( (1ULL<<((width) - 1)) - 1) << 1) | 1 )
 #define BITMASKS(width, offset) (BITMASK(width) << (offset))
 
-#define MAKE_PART_BITS(data, offset, size) ( ((data) & BITMASK(size)) << offset )
-#define GET_PART_BITS(data, offset, size) ( ((data) >> offset) & BITMASK(size) )
+#define MAKE_PART_BITS(data, offset, size) ( ((data) & BITMASK(size)) << (offset) )
+#define GET_PART_BITS(data, offset, size) ( ((data) >> (offset)) & BITMASK(size) )
 
 //Extract a token from a rule description
 #define GET_TOKEN(rule_description) \
@@ -770,10 +770,10 @@ enum
 
 
 	//Mask for the instruction
-	eei_vm_mask_instruction = ((1u << eei_vm_insturction_bits) - 1) << eei_vm_insturction_shift,
+	eei_vm_mask_instruction = ((1U << eei_vm_insturction_bits) - 1) << eei_vm_insturction_shift,
 
 	//Mask for the immediate values for each instruction
-	eei_vm_mask_immediate_shifted = ((1u << eei_vm_immediate_bits) - 1),
+	eei_vm_mask_immediate_shifted = ((1U << eei_vm_immediate_bits) - 1),
 	eei_vm_mask_immediate = eei_vm_mask_immediate_shifted << eei_vm_immediate_shift,
 
 
@@ -968,7 +968,8 @@ ee_parser_reply eei_vmmake_execute_functions(
 					eei_vm_insturction_function2,
 					index | ( (arity == 1) ? 0 : (1 << (eei_vm_immediate_bits - 1)) ));
 	}
-	else if (arity != 0)
+
+	if (arity != 0)
 	{
 		const ee_parser_reply reply =
 				eei_vmmake_append_instruction(vm, eei_vm_insturction_arity, arity);
@@ -1113,18 +1114,6 @@ static inline ee_parser_reply eei_parse_popT(
 		const eei_parser_token * token)
 {
 	return eei_parse_error(parser, eei_stack_pop(&parser->stack, node), token);
-}
-
-static inline ee_parser_reply eei_parse_test_pop(eei_parser * parser, int distance)
-{
-	//Test a pop can be performed
-	if (parser->stack.top > distance)
-		return ee_parser_ok;
-
-	if (parser->status == ee_parser_ok)
-		parser->status = ee_parser_stack_underflow;
-
-	return ee_parser_stack_underflow;
 }
 
 static inline ee_parser_reply eei_parse_pushGroupRule(
@@ -2315,7 +2304,7 @@ ee_evaluator_reply ee_evaluate(ee_environment environment, ee_variable result)
 
 //This structure is just a clever way to make sure the sizes of the basic data types are exactly what we expect them to be.
 //When a check fails the compilation will halt with an error of: "check type" declared as an array with a negative size
-struct _check_type_sizes
+struct check_type_sizes
 {
 	int not_enough_bits_for_token_type[((1 << eei_rule_bits_token_type_size) >= eei_token_sentinel) ? 1 : -1];
 	int not_enough_bits_for_token[(sizeof(eei_token) * __CHAR_BIT__ >= eei_rule_bits_token_size) ? 1 : -1];
