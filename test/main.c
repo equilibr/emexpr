@@ -19,7 +19,7 @@ union
 } global_environment;
 
 
-int subneg(ee_element_count arity, const ee_variable actuals, ee_variable result)
+int subneg(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
 {
 	switch (arity)
 	{
@@ -36,35 +36,35 @@ int subneg(ee_element_count arity, const ee_variable actuals, ee_variable result
 	}
 }
 
-int plus(ee_element_count arity, const ee_variable actuals, ee_variable result)
+int plus(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
 {
 	(void)arity;
 	*result = actuals[0] + actuals[1];
 	return 0;
 }
 
-int mul(ee_element_count arity, const ee_variable actuals, ee_variable result)
+int mul(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
 {
 	(void)arity;
 	*result = actuals[0] * actuals[1];
 	return 0;
 }
 
-int mega(ee_element_count arity, const ee_variable actuals, ee_variable result)
+int mega(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
 {
 	(void)arity;
 	*result = actuals[0] * 1000;
 	return 0;
 }
 
-int milli(ee_element_count arity, const ee_variable actuals, ee_variable result)
+int milli(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
 {
 	(void)arity;
 	*result = actuals[0] / 1000;
 	return 0;
 }
 
-int pi(ee_element_count arity, const ee_variable actuals, ee_variable result)
+int pi(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
 {
 	(void)arity;
 	(void)actuals;
@@ -72,21 +72,21 @@ int pi(ee_element_count arity, const ee_variable actuals, ee_variable result)
 	return 0;
 }
 
-int unity(ee_element_count arity, const ee_variable actuals, ee_variable result)
+int unity(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
 {
 	(void)arity;
 	*result = actuals[0];
 	return 0;
 }
 
-int arity(ee_element_count arity, const ee_variable actuals, ee_variable result)
+int arity(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
 {
 	(void)actuals;
 	*result = arity;
 	return 0;
 }
 
-int acuum(ee_element_count arity, const ee_variable actuals, ee_variable result)
+int acuum(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
 {
 	ee_variable_type sum = 0;
 	for (int i = 0; i < arity; ++i)
@@ -137,21 +137,22 @@ void test_print_header()
 {
 	printf(
 				"%16s   %8s %16s %10s "
-				"%5s %4s %5s %3s %3s %2s %5s   "
-				"%5s %4s %5s %3s %3s %2s %5s   "
+				"%5s %4s %5s %5s %3s %3s %2s %5s   "
+				"%5s %4s %5s %5s %3s %3s %2s %5s   "
 				"%5s %5s %s\n",
 				"expression","result","compile","eval",
-				"parse","exec","const","var","fun","vm","stack",
-				"parse","exec","const","var","fun","vm","stack",
+				"parse","exec","cstk","const","var","fun","vm","stack",
+				"parse","exec","cstk","const","var","fun","vm","stack",
 				"start","len.","text");
 }
 
 void test_print_sizes(const ee_data_size * sizes)
 {
 	printf(
-				"%5d %4d %5d %3d %3d %2d %5d   ",
+				"%5d %4d %5d %5d %3d %3d %2d %5d   ",
 				sizes->compilation_size,
 				sizes->full_environment_size,
+				sizes->compilation_stack,
 				sizes->constants,
 				sizes->variables,
 				sizes->functions,
@@ -167,6 +168,7 @@ void test_diff_sizes(ee_data_size * dst, const ee_data_size * left, const ee_dat
 	dst->variables = left->variables - right->variables;
 	dst->functions = left->functions - right->functions;
 	dst->instructions = left->instructions - right->instructions;
+	dst->compilation_stack = left->compilation_stack - right->compilation_stack;
 	dst->runtime_stack = left->runtime_stack - right->runtime_stack;
 }
 

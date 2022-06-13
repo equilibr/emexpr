@@ -257,7 +257,7 @@ typedef unsigned short int eei_token;
 typedef unsigned short int eei_rule;
 
 //Holds a rule precedence
-typedef int eei_precedence;
+typedef signed char eei_precedence;
 
 //Holds a parsing rule description
 //A description consists of:
@@ -507,6 +507,8 @@ enum
 	eei_precedence_power3 = 8,
 	eei_precedence_function = 10,
 	eei_precedence_postfix = 11,
+
+	eei_precedence_sentinel
 };
 
 static const eei_rule_item eei_parser_prefix_rules[] =
@@ -652,14 +654,19 @@ int eei_find_end_rule(eei_token token, eei_rule_description rule)
 //Parser stack
 //------------
 
+typedef struct
+{
+	ee_element_count start;
+	ee_element_count end;
+} eei_text_location;
+
 struct eei_parser_node_
 {
 	//The rule being processed
 	const eei_rule_item * rule;
 
 	//The source token for the rule being processed
-	const ee_char_type * token_start;
-	const ee_char_type * token_end;
+	eei_text_location text;
 
 	//The token type expected next
 	eei_rule_type next;
@@ -699,8 +706,8 @@ ee_parser_reply eei_stack_copynode(eei_parser_node * dst, const eei_parser_node 
 		return ee_parser_stack_error;
 
 	dst->rule = src->rule;
-	dst->token_start = src->token_start;
-	dst->token_end = src->token_end;
+	dst->text.start = src->text.start;
+	dst->text.end = src->text.end;
 	dst->next = src->next;
 	dst->precedence = src->precedence;
 	dst->stack_top = src->stack_top;
@@ -711,7 +718,6 @@ ee_parser_reply eei_stack_copynode(eei_parser_node * dst, const eei_parser_node 
 ee_parser_reply eei_stack_push(eei_parser_stack * stack, const eei_parser_node * node)
 {
 	//Push a node to the top of the stack
-	//Return on-zero on error
 
 	if (stack->top >= stack->size)
 		return ee_parser_stack_overflow;
@@ -989,8 +995,7 @@ ee_parser_reply eei_vmmake_execute_functions(
 typedef struct
 {
 	eei_token token;
-	const ee_char_type * start;
-	const ee_char_type * end;
+	eei_text_location text;
 } eei_parser_token;
 
 typedef struct
@@ -1009,6 +1014,9 @@ struct eei_parser_
 	eei_vmmake_environment vm;
 	eei_parser_symboltable symboltable;
 
+	const ee_char_type * expression;
+	ee_element_count expression_size;
+
 	eei_parser_token error_token;
 	ee_parser_reply status;
 
@@ -1025,8 +1033,8 @@ ee_parser_reply eei_parse_set_error(
 	parser->status = error;
 
 	parser->error_token.token = token->token;
-	parser->error_token.start = token->start;
-	parser->error_token.end = token->end;
+	parser->error_token.text.start = token->text.start;
+	parser->error_token.text.end = token->text.end;
 
 	return error;
 }
@@ -1045,8 +1053,8 @@ ee_parser_reply eei_parse_error(
 		{
 			//Save the current progress, but do not override existng data
 			parser->error_token.token = token->token;
-			parser->error_token.start = token->start;
-			parser->error_token.end = token->end;
+			parser->error_token.text.start = token->text.start;
+			parser->error_token.text.end = token->text.end;
 		}
 
 		return ee_parser_ok;
@@ -1062,8 +1070,8 @@ ee_parser_reply eei_parse_error(
 	{
 		//Save the error position
 		parser->error_token.token = token->token;
-		parser->error_token.start = token->start;
-		parser->error_token.end = token->end;
+		parser->error_token.text.start = token->text.start;
+		parser->error_token.text.end = token->text.end;
 	}
 
 	return reply;
@@ -1093,8 +1101,8 @@ static inline ee_parser_reply eei_parse_push(
 {
 	eei_parser_node node;
 
-	node.token_start = token->start;
-	node.token_end = token->end;
+	node.text.start = token->text.start;
+	node.text.end = token->text.end;
 	node.rule = rule;
 	node.next = next;
 	node.precedence = precedence;
@@ -1124,8 +1132,8 @@ static inline ee_parser_reply eei_parse_pushGroupRule(
 {
 	eei_parser_node node;
 
-	node.token_start = token->start;
-	node.token_end = token->end;
+	node.text.start = token->text.start;
+	node.text.end = token->text.end;
 	node.rule = &eei_parser_group_rule;
 	node.next = eei_rule_prefix;
 	node.precedence = 0;
@@ -1240,8 +1248,8 @@ ee_variable_type * eei_parse_symbols_get_variable(
 		const eei_parser_node * node)
 {
 	//Returns the variable pointed to by the node, or NULL on error.
-	const ee_char_type * token_start = node->token_start;
-	const ee_char_type * token_end = node->token_end;
+	const ee_char_type * token_start = &parser->expression[node->text.start];
+	const ee_char_type * token_end = &parser->expression[node->text.end];
 
 	int index =
 			eei_parse_symbols_get_name(
@@ -1264,8 +1272,8 @@ ee_function eei_parse_symbols_get_function(
 		int * wrong_arity)
 {
 	//Returns the function pointed to by the node, with a compatible arity, or NULL on error.
-	const ee_char_type * token_start = node->token_start;
-	const ee_char_type * token_end = node->token_end;
+	const ee_char_type * token_start = &parser->expression[node->text.start];
+	const ee_char_type * token_end = &parser->expression[node->text.end];
 
 	int seen = 0;
 	int index = 0;
@@ -1336,8 +1344,8 @@ ee_parser_reply eei_parse_done_node(eei_parser * parser, const eei_parser_node *
 		{
 			eei_parser_token token;
 			token.token = GET_TOKEN(node->rule->rule);
-			token.start = node->token_start;
-			token.end = node->token_end;
+			token.text.start = node->text.start;
+			token.text.end = node->text.end;
 			return eei_parse_error(parser, reply, &token);
 		}
 	}
@@ -1596,18 +1604,18 @@ void eei_parse_token(eei_parser * parser, eei_parser_token * token)
 	}
 }
 
-void eei_parse_init(eei_parser * parser, const ee_char_type * expression)
+void eei_parse_init(eei_parser * parser)
 {
 	eei_parser_node node;
 	eei_parser_token token;
 
 	parser->status = ee_parser_ok;
 	parser->error_token.token = MAKE_SIMPLE_TOKEN(eei_token_sof);
-	parser->error_token.start = expression;
-	parser->error_token.end = expression;
+	parser->error_token.text.start = 0;
+	parser->error_token.text.end = parser->expression_size;
 
-	node.token_start = expression;
-	node.token_end = expression;
+	node.text.start = 0;
+	node.text.end = parser->expression_size;
 	node.precedence = 0;
 	node.next = eei_rule_prefix;
 	node.stack_top = 0;
@@ -1618,17 +1626,17 @@ void eei_parse_init(eei_parser * parser, const ee_char_type * expression)
 
 	//Start a group - this allows to remove many tests for an empty stack
 	token.token = MAKE_SIMPLE_TOKEN(eei_token_group);
-	token.start = expression;
-	token.end = expression;
+	token.text.start = 0;
+	token.text.end = parser->expression_size;
 	eei_parse_pushGroupRule(parser, &token);
 }
 
-void eei_parse_expression(eei_parser * parser, const ee_char_type * expression)
+void eei_parse_expression(eei_parser * parser)
 {
 	eei_lexer_state lexer_state;
-	lexer_state.head = expression;
+	lexer_state.head = parser->expression;
 
-	eei_parse_init(parser, expression);
+	eei_parse_init(parser);
 
 	while ((parser->status == ee_parser_ok) && (parser->stack.top))
 	{
@@ -1636,8 +1644,8 @@ void eei_parse_expression(eei_parser * parser, const ee_char_type * expression)
 		const eei_token_type token_type = eei_lexer_next_token(&lexer_state);
 
 		//Create a complete token
-		token.start = lexer_state.start;
-		token.end = lexer_state.head;
+		token.text.start = lexer_state.start - parser->expression;
+		token.text.end = lexer_state.head - parser->expression;
 
 		if ((token_type == eei_token_delimiter) || (token_type == eei_token_operator))
 			token.token = MAKE_TOKEN(token_type, *lexer_state.start);
@@ -1658,7 +1666,7 @@ void eei_parse_expression(eei_parser * parser, const ee_char_type * expression)
 ee_parser_reply eei_rule_handler_number(eei_parser * parser, const eei_parser_node * node)
 {
 	eei_lexer_state state;
-	state.head = node->token_start;
+	state.head = &parser->expression[node->text.start];
 
 	if (eei_lexer_consume_number(&state) == eei_token_error)
 		return ee_parser_expression_not_a_constant;
@@ -1740,7 +1748,7 @@ ee_parser_reply eei_rule_handler_function(eei_parser * parser, const eei_parser_
 			eei_parse_popT(
 				parser,
 				&identifier,
-				&((eei_parser_token){GET_TOKEN(node->rule->rule), node->token_start, node->token_end}));
+				&((eei_parser_token){GET_TOKEN(node->rule->rule), node->text}));
 
 	if (reply != ee_parser_ok)
 		return reply;
@@ -1749,7 +1757,7 @@ ee_parser_reply eei_rule_handler_function(eei_parser * parser, const eei_parser_
 		return eei_parse_set_error(
 					parser,
 					ee_parser_expression_identifier_expected,
-					&((eei_parser_token){GET_TOKEN(identifier.rule->rule), identifier.token_start, identifier.token_end}));
+					&((eei_parser_token){GET_TOKEN(identifier.rule->rule), identifier.text}));
 
 	const int arity = parser->vm.current.stack - identifier.stack_top;
 	int wrong_arity = 0;
@@ -1761,7 +1769,7 @@ ee_parser_reply eei_rule_handler_function(eei_parser * parser, const eei_parser_
 					wrong_arity
 					? ee_parser_function_wrong_arity
 					: ee_parser_function_not_implemented,
-					&((eei_parser_token){GET_TOKEN(identifier.rule->rule), identifier.token_start, identifier.token_end}));
+					&((eei_parser_token){GET_TOKEN(identifier.rule->rule), identifier.text}));
 
 	return eei_vmmake_execute_functions(&parser->vm, op, arity);
 }
@@ -2152,6 +2160,8 @@ ee_parser_reply ee_guestimate(const ee_char_type * expression, ee_data_size * si
 
 	} while ((token_type != eei_token_eof) && (token_type != eei_token_error));
 
+	size->expression = state.head - expression;
+
 
 	//Guestimate the number of elements
 
@@ -2160,7 +2170,7 @@ ee_parser_reply ee_guestimate(const ee_char_type * expression, ee_data_size * si
 	size->functions = identifiers + operators;
 	size->instructions = numbers + identifiers + operators;
 	size->instructions *= size->instructions;
-	size->compilation_stack = 2 + numbers + identifiers + operators * 2 + groups * 4;
+	size->compilation_stack = 2 + numbers + identifiers + operators * 2 + groups * 2;
 	size->runtime_stack = numbers + actuals + groups * 2 + operators + identifiers;
 
 	eei_guestimate_calculate_sizes(size);
@@ -2175,14 +2185,14 @@ ee_parser_reply ee_compile(
 		ee_environment environment,
 		const ee_compilation_data *data)
 {
-	eei_environment_struct * full_env = (eei_environment_struct *)environment;
 	eei_parser parser;
 
-	//Setup the parser stack memory
+	//Setup the parser memory
 
+	eei_environment_struct * full_env = (eei_environment_struct *)environment;
 	eei_compilation_struct * full_compilation = (eei_compilation_struct *)compilation;
 
-	char * ptr = (char *)&full_compilation->data[0];
+	char * ptr = &full_compilation->data[0];
 	if (alignof(eei_parser_node))
 		while ((ptrdiff_t)ptr % alignof(eei_parser_node))
 			ptr++;
@@ -2196,11 +2206,14 @@ ee_parser_reply ee_compile(
 	parser.vm.current.variables = 0;
 	parser.vm.current.functions = 0;
 	parser.vm.current.instructions = 0;
+	parser.vm.current.stack = 0;
 
 	parser.vm.max.constants = size->constants;
 	parser.vm.max.variables = size->variables;
 	parser.vm.max.functions = size->functions;
 	parser.vm.max.instructions = size->instructions;
+	//Reset the stack info since the parser will count the actual stack usage
+	parser.vm.max.stack = 0;
 
 	//Calculate the VM tables memory locations
 	eei_environment_calculate_offsets(&full_env->offsets,(char *)&full_env->data[0],size);
@@ -2212,12 +2225,11 @@ ee_parser_reply ee_compile(
 			&full_env->offsets,
 			(char *)&full_env->data[0]);
 
-	//Reset the stack info since the parser will count the actual stack usage
-	parser.vm.max.stack = 0;
-	parser.vm.current.stack = 0;
+	parser.expression = expression;
+	parser.expression_size = size->expression;
 
 	eei_parse_symbols_init(&parser, data);
-	eei_parse_expression(&parser, expression);
+	eei_parse_expression(&parser);
 
 	//Fill back data
 
@@ -2226,14 +2238,13 @@ ee_parser_reply ee_compile(
 	size->variables = parser.vm.current.variables;
 	size->functions = parser.vm.current.functions;
 	size->instructions = parser.vm.current.instructions;
+	full_env->instruction_count = parser.vm.current.instructions;
 
 	//Fill the actually used compilation stack size
 	size->compilation_stack = parser.stack.high;
 
-	//Fill the calculate maximum runtime stack size
+	//Fill the calculated maximum runtime stack size
 	size->runtime_stack = parser.vm.max.stack;
-
-	full_env->instruction_count = parser.vm.current.instructions;
 
 	//TODO: Allow to disable the compaction
 	eei_environment_compact(full_env, size, &parser);
@@ -2243,8 +2254,9 @@ ee_parser_reply ee_compile(
 		compilation->reply = ee_parser_empty;
 	else
 		compilation->reply = parser.status;
-	compilation->error_token_start = parser.error_token.start;
-	compilation->error_token_end = parser.error_token.end;
+
+	compilation->error_token_start = &parser.expression[parser.error_token.text.start];
+	compilation->error_token_end = &parser.expression[parser.error_token.text.end];
 
 	return compilation->reply;
 }
@@ -2314,5 +2326,8 @@ struct check_type_sizes
 	int not_enough_bits_for_token_type[((1 << eei_rule_bits_token_type_size) >= eei_token_sentinel) ? 1 : -1];
 	int not_enough_bits_for_token[(sizeof(eei_token) * __CHAR_BIT__ >= eei_rule_bits_token_size) ? 1 : -1];
 	int not_enough_bits_for_rule[(sizeof(eei_rule) * __CHAR_BIT__ >= eei_rule_bits_rule_size) ? 1 : -1];
+	int not_enough_bits_for_precedence[(1 << ((sizeof(eei_precedence) * __CHAR_BIT__) >= eei_rule_bits_precedence_size)) ? 1 : -1];
 	int not_enough_bits_for_rule_description[(sizeof(eei_rule_description) * __CHAR_BIT__ >= eei_rule_bits_total_size) ? 1 : -1];
+
+	int not_enough_bits_for_precedence2[( ((1 << eei_rule_bits_precedence_size)-1) >= eei_precedence_sentinel) ? 1 : -1];
 };

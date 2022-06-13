@@ -42,7 +42,7 @@ typedef ee_variable_type * ee_variable;
 //The result should be written by this function, if it returns any value.
 //A non-zero value should be returned if any error was encountered during execution.
 //It is posible to use the same function under different names and arities.
-typedef int (*ee_function)(ee_element_count arity, const ee_variable actuals, ee_variable result);
+typedef int (*ee_function)(ee_element_count arity, const ee_variable_type * actuals, ee_variable_type * result);
 
 //Describes a single function
 typedef struct
@@ -68,7 +68,7 @@ typedef struct
 	//Functions with an arity of 1 can be invoked as a post-fix operator without the usual call syntax.
 	//This can be useful for suppling scaling or conversions, such as "k/M/G".
 	//Function with an arity of one can have the same name as a variable when used ONLY as a post-fix operator.
-	const int arity;
+	const signed char arity;
 
 } ee_compilation_data_function;
 
@@ -263,6 +263,7 @@ typedef struct
 	//Counts of the various elements
 	//Used and updated by ee_compile
 
+	ee_element_count expression;
 	ee_element_count constants;
 	ee_element_count variables;
 	ee_element_count functions;
