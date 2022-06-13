@@ -808,13 +808,13 @@ typedef struct
 
 typedef struct
 {
-	int constants;
-	int variables;
-	int functions;
-	int instructions;
+	ee_element_count constants;
+	ee_element_count variables;
+	ee_element_count functions;
+	ee_element_count instructions;
 
 	//This tracks the run-time stack usage
-	int stack;
+	ee_element_count stack;
 } eei_vmmake_counters;
 
 typedef struct
