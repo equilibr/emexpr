@@ -68,7 +68,7 @@ typedef struct
 	//Functions with an arity of 1 can be invoked as a post-fix operator without the usual call syntax.
 	//This can be useful for suppling scaling or conversions, such as "k/M/G".
 	//Function with an arity of one can have the same name as a variable when used ONLY as a post-fix operator.
-	const ee_element_count arity;
+	const int arity;
 
 } ee_compilation_data_function;
 
