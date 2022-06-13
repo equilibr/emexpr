@@ -257,7 +257,7 @@ typedef unsigned short int eei_token;
 typedef unsigned short int eei_rule;
 
 //Holds a rule precedence
-typedef signed char eei_precedence;
+typedef unsigned char eei_precedence;
 
 //Holds a parsing rule description
 //A description consists of:
@@ -669,7 +669,7 @@ struct eei_parser_node_
 	eei_text_location text;
 
 	//The token type expected next
-	eei_rule_type next;
+	unsigned char next;
 
 	//The precedence of the current node
 	eei_precedence precedence;
@@ -1267,7 +1267,7 @@ ee_variable_type * eei_parse_symbols_get_variable(
 
 ee_function eei_parse_symbols_get_function(
 		eei_parser * parser,
-		int arity,
+		ee_arity arity,
 		const eei_parser_node * node,
 		int * wrong_arity)
 {
@@ -1293,7 +1293,7 @@ ee_function eei_parse_symbols_get_function(
 			seen = 1;
 
 			//Test for correct arity
-			int found_arity = parser->symboltable.foreign->functions.data[index].arity;
+			ee_arity found_arity = parser->symboltable.foreign->functions.data[index].arity;
 
 			if (found_arity >= 0)
 			{
@@ -1308,7 +1308,7 @@ ee_function eei_parse_symbols_get_function(
 			{
 				//We're looking at a variadic function
 				//Calculate the number of mandatory parameters
-				found_arity = -found_arity - 1;
+				found_arity = (ee_arity)(-(found_arity + 1));
 
 				if (found_arity > arity)
 				{
@@ -1759,7 +1759,7 @@ ee_parser_reply eei_rule_handler_function(eei_parser * parser, const eei_parser_
 					ee_parser_expression_identifier_expected,
 					&((eei_parser_token){GET_TOKEN(identifier.rule->rule), identifier.text}));
 
-	const int arity = parser->vm.current.stack - identifier.stack_top;
+	const ee_arity arity = (ee_arity)(parser->vm.current.stack - identifier.stack_top);
 	int wrong_arity = 0;
 	ee_function op = eei_parse_symbols_get_function(parser, arity, &identifier, &wrong_arity);
 

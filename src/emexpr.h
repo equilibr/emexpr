@@ -29,6 +29,9 @@ typedef unsigned char ee_element_count;
 //This type must be copyable by the compiler using the assignment(=) syntax!
 typedef double ee_variable_type;
 
+//The type used for counting function parameters
+typedef signed char ee_arity;
+
 
 //API types
 //---------
@@ -68,7 +71,7 @@ typedef struct
 	//Functions with an arity of 1 can be invoked as a post-fix operator without the usual call syntax.
 	//This can be useful for suppling scaling or conversions, such as "k/M/G".
 	//Function with an arity of one can have the same name as a variable when used ONLY as a post-fix operator.
-	const signed char arity;
+	const ee_arity arity;
 
 } ee_compilation_data_function;
 
