@@ -730,7 +730,8 @@ ee_parser_reply eei_stack_pop(eei_parser_stack * stack, eei_parser_node * node)
 	if (stack->top == 0)
 		return ee_parser_stack_underflow;
 
-	eei_stack_copynode(node, &stack->stack[stack->top - 1]);
+	if (eei_stack_copynode(node, &stack->stack[stack->top - 1]) != ee_parser_ok)
+		return ee_parser_stack_error;
 
 	stack->top--;
 	return ee_parser_ok;
@@ -1751,7 +1752,7 @@ ee_parser_reply eei_rule_handler_function(eei_parser * parser, const eei_parser_
 					&((eei_parser_token){GET_TOKEN(identifier.rule->rule), identifier.token_start, identifier.token_end}));
 
 	const int arity = parser->vm.current.stack - identifier.stack_top;
-	int wrong_arity;
+	int wrong_arity = 0;
 	ee_function op = eei_parse_symbols_get_function(parser, arity, &identifier, &wrong_arity);
 
 	if (!op)
