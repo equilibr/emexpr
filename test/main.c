@@ -19,7 +19,7 @@ union
 } global_environment;
 
 
-int subneg(int arity, const ee_variable actuals, ee_variable result)
+int subneg(ee_element_count arity, const ee_variable actuals, ee_variable result)
 {
 	switch (arity)
 	{
@@ -36,49 +36,57 @@ int subneg(int arity, const ee_variable actuals, ee_variable result)
 	}
 }
 
-int plus(int arity, const ee_variable actuals, ee_variable result)
+int plus(ee_element_count arity, const ee_variable actuals, ee_variable result)
 {
+	(void)arity;
 	*result = actuals[0] + actuals[1];
 	return 0;
 }
 
-int mul(int arity, const ee_variable actuals, ee_variable result)
+int mul(ee_element_count arity, const ee_variable actuals, ee_variable result)
 {
+	(void)arity;
 	*result = actuals[0] * actuals[1];
 	return 0;
 }
 
-int mega(int arity, const ee_variable actuals, ee_variable result)
+int mega(ee_element_count arity, const ee_variable actuals, ee_variable result)
 {
+	(void)arity;
 	*result = actuals[0] * 1000;
 	return 0;
 }
 
-int milli(int arity, const ee_variable actuals, ee_variable result)
+int milli(ee_element_count arity, const ee_variable actuals, ee_variable result)
 {
+	(void)arity;
 	*result = actuals[0] / 1000;
 	return 0;
 }
 
-int pi(int arity, const ee_variable actuals, ee_variable result)
+int pi(ee_element_count arity, const ee_variable actuals, ee_variable result)
 {
+	(void)arity;
+	(void)actuals;
 	*result = 3.141592653589;
 	return 0;
 }
 
-int unity(int arity, const ee_variable actuals, ee_variable result)
+int unity(ee_element_count arity, const ee_variable actuals, ee_variable result)
 {
+	(void)arity;
 	*result = actuals[0];
 	return 0;
 }
 
-int arity(int arity, const ee_variable actuals, ee_variable result)
+int arity(ee_element_count arity, const ee_variable actuals, ee_variable result)
 {
+	(void)actuals;
 	*result = arity;
 	return 0;
 }
 
-int acuum(int arity, const ee_variable actuals, ee_variable result)
+int acuum(ee_element_count arity, const ee_variable actuals, ee_variable result)
 {
 	ee_variable_type sum = 0;
 	for (int i = 0; i < arity; ++i)

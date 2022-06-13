@@ -23,7 +23,7 @@ typedef char ee_char_type;
 typedef signed short ee_memory_size;
 
 //The type used for counting various elements of the parsing and execution environment
-typedef signed char ee_element_count;
+typedef unsigned char ee_element_count;
 
 //The type of the variable handled by the engine
 //This type must be copyable by the compiler using the assignment(=) syntax!
@@ -42,7 +42,7 @@ typedef ee_variable_type * ee_variable;
 //The result should be written by this function, if it returns any value.
 //A non-zero value should be returned if any error was encountered during execution.
 //It is posible to use the same function under different names and arities.
-typedef int (*ee_function)(int arity, const ee_variable actuals, ee_variable result);
+typedef int (*ee_function)(ee_element_count arity, const ee_variable actuals, ee_variable result);
 
 //Describes a single function
 typedef struct

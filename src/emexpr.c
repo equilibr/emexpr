@@ -104,11 +104,12 @@ static inline int eei_lexer_is_operator(const ee_char_type c)
 
 int eei_lexer_consume_digits(eei_lexer_state * state)
 {
+	enum { decimal_base = 10 };
 	int number = 0;
 
 	do
 	{
-		number *= 10;
+		number *= decimal_base;
 		number += *state->head - '0';
 		state->head++;
 	} while (
@@ -483,13 +484,13 @@ typedef enum
 //Test if the rule is valid
 #define IS_RULE_VALID(rule) ((rule) != MAKE_SENTINEL_RULE())
 
-#define GET_RULE_TYPE(rule) GET_PART_BITS(rule, eei_rule_bits_type_offset, eei_rule_bits_type_size)
-#define GET_RULE_PRECEDENCE(rule) GET_PART_BITS(rule, eei_rule_bits_precedence_offset, eei_rule_bits_precedence_size)
-#define GET_RULE_NEXT(rule) GET_PART_BITS(rule, eei_rule_bits_next_offset, eei_rule_bits_next_size)
-#define GET_RULE_ACCOSIATIVITY(rule) GET_PART_BITS(rule, eei_rule_bits_accosiativity_offset, eei_rule_bits_accosiativity_size)
+#define GET_RULE_TYPE(rule) (eei_rule_type)GET_PART_BITS(rule, eei_rule_bits_type_offset, eei_rule_bits_type_size)
+#define GET_RULE_PRECEDENCE(rule) (eei_precedence)GET_PART_BITS(rule, eei_rule_bits_precedence_offset, eei_rule_bits_precedence_size)
+#define GET_RULE_NEXT(rule) (eei_rule)GET_PART_BITS(rule, eei_rule_bits_next_offset, eei_rule_bits_next_size)
+#define GET_RULE_ACCOSIATIVITY(rule) (eei_rule_associativity)GET_PART_BITS(rule, eei_rule_bits_accosiativity_offset, eei_rule_bits_accosiativity_size)
 #define GET_RULE_ENDDELIMITER(rule) GET_PART_BITS(rule, eei_rule_bits_end_delimiter_offset, eei_rule_bits_end_delimiter_size)
 #define GET_RULE_DELAYEDFOLD(rule) GET_PART_BITS(rule, eei_rule_bits_delayed_fold_offset, eei_rule_bits_delayed_fold_size)
-#define GET_TOKEN_TYPE(rule) GET_PART_BITS(rule, eei_rule_bits_token_type_offset, eei_rule_bits_token_type_size)
+#define GET_TOKEN_TYPE(rule) (eei_token_type)GET_PART_BITS(rule, eei_rule_bits_token_type_offset, eei_rule_bits_token_type_size)
 
 //Parser rule tables
 //------------------
@@ -838,7 +839,7 @@ ee_parser_reply eei_vmmake_append_instruction(
 
 	//Count number of immediate opcodes needed
 	int total = -1;
-	int data = immediate;
+	unsigned int data = immediate;
 	do
 	{
 		total++;
@@ -1251,8 +1252,8 @@ ee_variable_type * eei_parse_symbols_get_variable(
 
 	if (index < parser->symboltable.variables)
 		return parser->symboltable.foreign->variables.data[index];
-	else
-		return 0;
+
+	return 0;
 }
 
 ee_function eei_parse_symbols_get_function(
@@ -1608,6 +1609,7 @@ void eei_parse_init(eei_parser * parser, const ee_char_type * expression)
 	node.token_end = expression;
 	node.precedence = 0;
 	node.next = eei_rule_prefix;
+	node.stack_top = 0;
 
 	//Push a "start" rule - this will simplify things during processing
 	node.rule = eei_find_rule(MAKE_SIMPLE_TOKEN(eei_token_sof), eei_rule_prefix);
@@ -1694,8 +1696,8 @@ ee_parser_reply eei_rule_handler_group(eei_parser * parser, const eei_parser_nod
 
 	if (items == 1)
 		return ee_parser_ok;
-	else
-		return ee_parser_expression_empty_group;
+
+	return ee_parser_expression_empty_group;
 }
 
 ee_parser_reply eei_rule_handler_prefix(eei_parser * parser, const eei_parser_node * node)
@@ -1795,7 +1797,7 @@ typedef struct
 	unsigned int accumulator;
 
 	//Function arity accumulator
-	int arity;
+	ee_element_count arity;
 
 	//Pointer to the one-past stack top
 	//When pushing this address is the new write address
@@ -1986,23 +1988,23 @@ typedef struct
 
 void eei_guestimate_calculate_sizes(ee_data_size * size)
 {
-	size->compilation_size =
+	size->compilation_size = (ee_memory_size)(
 			sizeof(eei_compilation_struct)
-			+ alignof(eei_parser_node) + sizeof(eei_parser_node) * size->compilation_stack;
+			+ alignof(eei_parser_node) + sizeof(eei_parser_node) * size->compilation_stack);
 
-	size->environment_size =
+	size->environment_size = (ee_memory_size)(
 			sizeof(eei_environment_struct)
 			+ alignof(ee_variable_type) + sizeof(ee_variable_type) * size->constants
 			+ alignof(ee_variable_type) + sizeof(ee_variable_type) * size->variables
 			+ alignof(ee_function) + sizeof(ee_function) * size->functions
-			+ alignof(eei_vm_bytecode) + sizeof(eei_vm_bytecode) * size->instructions;
+			+ alignof(eei_vm_bytecode) + sizeof(eei_vm_bytecode) * size->instructions);
 
-	size->stack_size =
-			sizeof(ee_variable_type) * size->runtime_stack;
+	size->stack_size = (ee_memory_size)(
+			sizeof(ee_variable_type) * size->runtime_stack);
 
-	size->full_environment_size =
+	size->full_environment_size = (ee_memory_size)(
 			size->environment_size
-			+ alignof(ee_variable_type) + size->stack_size;
+			+ alignof(ee_variable_type) + size->stack_size);
 }
 
 char * eei_environment_calculate_offsets(
@@ -2015,38 +2017,39 @@ char * eei_environment_calculate_offsets(
 	char * ptr = base;
 
 	//Constants
-	while ((ptrdiff_t)ptr % alignof(ee_variable_type))
-		ptr++;
+	if (alignof(ee_variable_type))
+		while ((ptrdiff_t)ptr % alignof(ee_variable_type))
+			ptr++;
 
-	offsets->constants = (int)(ptr - base);
+	offsets->constants = (ee_memory_size)(ptr - base);
 	ptr += sizeof(ee_variable_type) * size->constants;
 
 	//Variables
 	while ((ptrdiff_t)ptr % alignof(const ee_variable_type*))
 		ptr++;
 
-	offsets->variables = (int)(ptr - base);
+	offsets->variables = (ee_memory_size)(ptr - base);
 	ptr += sizeof(const ee_variable_type*) * size->variables;
 
 	//Functions
 	while ((ptrdiff_t)ptr % alignof(ee_function))
 		ptr++;
 
-	offsets->functions = (int)(ptr - base);
+	offsets->functions = (ee_memory_size)(ptr - base);
 	ptr += sizeof(ee_function) * size->functions;
 
 	//Instructions
 	while ((ptrdiff_t)ptr % alignof(eei_vm_bytecode))
 		ptr++;
 
-	offsets->instructions = (int)(ptr - base);
+	offsets->instructions = (ee_memory_size)(ptr - base);
 	ptr += sizeof(eei_vm_bytecode) * size->instructions;
 
 	//Runtime stack
 	while ((ptrdiff_t)ptr % alignof(ee_variable_type))
 		ptr++;
 
-	offsets->stack = (int)(ptr - base);
+	offsets->stack = (ee_memory_size)(ptr - base);
 	ptr += sizeof(ee_variable_type) * size->runtime_stack;
 
 	return ptr;
@@ -2179,8 +2182,9 @@ ee_parser_reply ee_compile(
 	eei_compilation_struct * full_compilation = (eei_compilation_struct *)compilation;
 
 	char * ptr = (char *)&full_compilation->data[0];
-	while ((ptrdiff_t)ptr % alignof(eei_parser_node))
-		ptr++;
+	if (alignof(eei_parser_node))
+		while ((ptrdiff_t)ptr % alignof(eei_parser_node))
+			ptr++;
 
 	parser.stack.stack = (eei_parser_node*)ptr;
 	parser.stack.size = size->compilation_stack;
@@ -2198,7 +2202,7 @@ ee_parser_reply ee_compile(
 	parser.vm.max.instructions = size->instructions;
 
 	//Calculate the VM tables memory locations
-	ptr = eei_environment_calculate_offsets(&full_env->offsets,(char *)&full_env->data[0],size);
+	eei_environment_calculate_offsets(&full_env->offsets,(char *)&full_env->data[0],size);
 	full_env->instruction_count = parser.vm.max.instructions;
 
 	//Setup the VM tables memory
@@ -2274,9 +2278,9 @@ ee_evaluator_reply ee_evaluate(ee_environment environment, ee_variable result)
 		if (result)
 			//A result was expected - notify the caller
 			return ee_evaluator_empty;
-		else
-			//No result was expected anyhow - all is well
-			return ee_evaluator_ok;
+
+		//No result was expected anyhow - all is well
+		return ee_evaluator_ok;
 	}
 
 	ee_evaluator_reply reply = eei_vm_execute(&vm_environment);
@@ -2287,8 +2291,8 @@ ee_evaluator_reply ee_evaluate(ee_environment environment, ee_variable result)
 		//A result is expected but the stack is empty
 		if (reply == ee_evaluator_empty)
 			return ee_evaluator_stack_underflow;
-		else
-			*result = *vm_environment.stack;
+
+		*result = *vm_environment.stack;
 	}
 
 	return reply;
