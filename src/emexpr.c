@@ -23,28 +23,22 @@ typedef enum
 	eei_token_error,
 	eei_token_eof,
 
-	eei_token_identifier,
+	eei_token_sof,
+	eei_token_group,
+
+	//Marker for the END of internal tokens
+	eei_token_internals,
+
+	eei_token_identifier = eei_token_internals,
 	eei_token_number,
 	eei_token_delimiter,
 	eei_token_operator,
-
-	eei_token_sof,
-	eei_token_group,
 
 	//Sentinel value to count the number of enumeraions
 	//The _check_type_sizes struct uses this to validate all values fit in the data type used for the token
 	//DO NOT use it in the actual tokens since it may not fit in the allocated bits!
 	eei_token_sentinel
 } eei_token_type;
-
-int eei_is_internal_token(eei_token_type token)
-{
-	return
-			(token == eei_token_error)
-			|| (token == eei_token_eof)
-			|| (token == eei_token_sof)
-			|| (token == eei_token_group);
-}
 
 typedef char * tExpressionItem;
 
@@ -853,14 +847,14 @@ ee_parser_reply eei_vmmake_append_instruction(
 		data >>= eei_vm_immediate_bits;
 	} while (data);
 
-	if (vm->current.instructions + data + 1 > vm->max.instructions)
+	if (vm->current.instructions + total + 1 > vm->max.instructions)
 		return ee_parser_instrictions_overflow;
 
 	int i = total;
 	while (i)
 	{
 		vm->data.instructions[vm->current.instructions++] =
-				((immediate >> (eei_vm_immediate_bits * i)) & ((1 << eei_vm_immediate_bits) - 1)
+				(((immediate >> (eei_vm_immediate_bits * i)) & eei_vm_mask_immediate_shifted)
 				<< eei_vm_immediate_shift)
 				| eei_vm_insturction_immediate;
 
@@ -868,7 +862,7 @@ ee_parser_reply eei_vmmake_append_instruction(
 	}
 
 	vm->data.instructions[vm->current.instructions++] =
-			(immediate & ((1 << eei_vm_immediate_bits) - 1)
+			((immediate & eei_vm_mask_immediate_shifted)
 			<< eei_vm_immediate_shift)
 			| instruction;
 
@@ -893,6 +887,7 @@ ee_parser_reply eei_vmmake_load_constant(
 	if (index == vm->current.constants)
 	{
 		//Nothing found, we need to add a new constant to the table
+
 		if (vm->current.constants >= vm->max.constants)
 			return ee_parser_constants_overflow;
 
@@ -923,6 +918,7 @@ ee_parser_reply eei_vmmake_load_variable(
 	if (index == vm->current.variables)
 	{
 		//Nothing found, we need to add a new variable to the table
+
 		if (vm->current.variables >= vm->max.variables)
 			return ee_parser_variables_overflow;
 
@@ -954,6 +950,7 @@ ee_parser_reply eei_vmmake_execute_functions(
 	if (index == vm->current.functions)
 	{
 		//Nothing found, we need to add a new constant to the table
+
 		if (vm->current.functions >= vm->max.functions)
 			return ee_parser_functions_overflow;
 
@@ -1262,7 +1259,7 @@ ee_variable_type * eei_parse_symbols_get_variable(
 	if (index < parser->symboltable.variables)
 		return parser->symboltable.foreign->variables.data[index];
 
-	return 0;
+	return NULL;
 }
 
 ee_function eei_parse_symbols_get_function(
@@ -1407,7 +1404,7 @@ static inline void eei_parse_parseInfix(
 		eei_parse_pushGroupRule(parser, token);
 }
 
-void eei_parse_parsePostfix(
+static inline void eei_parse_parsePostfix(
 		eei_parser * parser,
 		const eei_rule_item * rule,
 		const eei_parser_token * token)
@@ -1422,30 +1419,33 @@ void eei_parse_parsePostfix(
 				token);
 }
 
-void eei_parse_foldPrefix(eei_parser * parser, int delay)
+static inline void eei_parse_foldPrefix(eei_parser * parser, int delay)
 {
 	//Fold immediately preceeding prefix nodes.
 	//This will stop on any non-prefix node, any special node and,
 	//	also, on any node that expects an end token
 	while (parser->stack.top)
 	{
-		if (eei_is_internal_token( GET_TOKEN_TYPE(eei_stack_top(&parser->stack, 0)->rule->rule) ))
+		const eei_rule_description rule =
+				parser->stack.stack[parser->stack.top - 1].rule->rule;
+
+		if (GET_TOKEN_TYPE(rule) < eei_token_internals)
 			break;
 
-		if (GET_RULE_ENDDELIMITER(eei_stack_top(&parser->stack, 0)->rule->rule))
+		if (GET_RULE_ENDDELIMITER(rule))
 			break;
 
-		if (GET_RULE_TYPE(eei_stack_top(&parser->stack, 0)->rule->rule) != eei_rule_prefix)
+		if (GET_RULE_TYPE(rule) != eei_rule_prefix)
 			break;
 
-		if (delay && GET_RULE_DELAYEDFOLD(eei_stack_top(&parser->stack, 0)->rule->rule))
+		if (delay && GET_RULE_DELAYEDFOLD(rule))
 			break;
 
 		eei_parse_done(parser);
 	}
 }
 
-void eei_parse_foldPrecedence(eei_parser * parser, const eei_rule_item * rule)
+static inline void eei_parse_foldPrecedence(eei_parser * parser, const eei_rule_item * rule)
 {
 	const eei_precedence precedence = GET_RULE_PRECEDENCE(rule->rule);
 
@@ -1476,7 +1476,7 @@ void eei_parse_foldEndDilimiter(
 		return;
 	}
 
-	//Additional sanity check to make sure the stack was build correctly
+	//Additional sanity check to make sure the stack was built correctly
 	if (!GET_RULE_ENDDELIMITER(parser->stack.stack[parser->currentGroup].rule->rule))
 	{
 		eei_parse_set_error(parser, ee_parser_error, token);
@@ -1599,7 +1599,6 @@ void eei_parse_token(eei_parser * parser, eei_parser_token * token)
 	else
 	{
 		//The current token is not any expected token - it must be some END delimiter
-//		eei_parse_foldPrefix(parser);
 		eei_parse_foldEndDilimiter(parser, token);
 	}
 }
