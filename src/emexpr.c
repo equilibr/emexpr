@@ -15,6 +15,151 @@
 // All externally visible definition have a prefix of "ee" - Embedded Expression
 
 
+//Auto-selections of compilation options based on external DEFINEs'
+//-----------------------------------------------------------------
+
+#if defined(EE_USER_CONSTANT_SCANNER) && defined(EE_USER_CONSTANT_PARSER)
+#	define EEI_DEFAULT_CONSTANT 0
+#	define EEI_CONSTANT_SCANNER EE_USER_CONSTANT_SCANNER
+#	define EEI_CONSTANT_PARSER EE_USER_CONSTANT_PARSER
+#else
+#	define EEI_DEFAULT_CONSTANT 1
+#	define EEI_CONSTANT_SCANNER eei_constant_scanner
+#	define EEI_CONSTANT_PARSER eei_constant_parser
+#endif
+
+#if defined(EE_USER_FUNCTION_LIBRARY)
+#	define EEI_DEFAULT_LIBRARY 0
+#	define EEI_FUNCTION_LIBRARY EE_USER_FUNCTION_LIBRARY
+#else
+#	define EEI_DEFAULT_LIBRARY 1
+#	define EEI_FUNCTION_LIBRARY eei_operators_library
+#endif
+
+
+//Default implementations of user modifiable items
+//------------------------------------------------
+
+//This provides the library default implementation of things the user can modify/override.
+//The implementation is at the top of the code to make sure it only uses declarations visible
+//	to the external user of the library, e.g. our header file.
+
+#if EEI_DEFAULT_CONSTANT
+
+const ee_char_type * eei_constant_scanner(const ee_char_type * start)
+{
+	//A naive base-10 integer scanner
+
+	while ( (*start >= '0') && (*start <= '9') )
+		++start;
+
+	return start;
+}
+
+int eei_constant_parser(const ee_char_type * start, const ee_char_type * end, ee_variable_type * result)
+{
+	//A naive base-10 integer parser
+
+	*result = 0;
+
+	while (start < end)
+	{
+		*result *= 10;
+		*result += *start - '0';
+		start++;
+	}
+
+	return 0;
+}
+
+#endif
+
+
+#if EEI_DEFAULT_LIBRARY
+
+int eei_operator_subneg(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
+{
+	switch (arity)
+	{
+		case 1:
+			*result = -actuals[0];
+			return 0;
+
+		case 2:
+			*result = actuals[0] - actuals[1];
+			return 0;
+
+		default:
+			return 1;
+	}
+}
+
+int eei_operator_plus(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
+{
+	(void)arity;
+	*result = actuals[0] + actuals[1];
+	return 0;
+}
+
+int eei_operator_mul(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
+{
+	(void)arity;
+	*result = actuals[0] * actuals[1];
+	return 0;
+}
+
+int eei_operator_div(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
+{
+	(void)arity;
+	*result = actuals[0] / actuals[1];
+	return 0;
+}
+
+int eei_operator_equal(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
+{
+	(void)arity;
+	*result = (actuals[0] == actuals[1]) ? 1 : 0;
+	return 0;
+}
+
+int eei_operator_greater(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
+{
+	(void)arity;
+	*result = (actuals[0] > actuals[1]) ? 1 : 0;
+	return 0;
+}
+
+int eei_operator_less(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
+{
+	(void)arity;
+	*result = (actuals[0] < actuals[1]) ? 1 : 0;
+	return 0;
+}
+
+static ee_compilation_data_function eei_operators_function[] =
+{
+	{eei_operator_subneg,1},
+	{eei_operator_subneg,2},
+	{eei_operator_plus,2},
+	{eei_operator_mul,2},
+	{eei_operator_div,2},
+	{eei_operator_equal,2},
+	{eei_operator_greater,2},
+	{eei_operator_less,2},
+	{0,0}
+};
+
+const char * eei_operators_names[] = {"-","-","+","*","=",">","<"};
+
+static const ee_compilation_data_functions eei_operators_library =
+{
+	eei_operators_function,
+	{eei_operators_names, 0}
+};
+
+#endif
+
+
 //Lexer
 //-----
 
@@ -46,10 +191,6 @@ typedef struct
 {
 	const ee_char_type * start;
 	const ee_char_type * head;
-
-	int number_integer;
-	int number_fractional;
-	int number_exponent;
 } eei_lexer_state;
 
 static inline int eei_lexer_is_eof(const ee_char_type c)
@@ -129,62 +270,6 @@ eei_token_type eei_lexer_consume_identifier(eei_lexer_state * state)
 	return eei_token_identifier;
 }
 
-eei_token_type eei_lexer_consume_number(eei_lexer_state * state)
-{
-	//Numbers are scanned piece-wise and later processed by the parser
-	state->number_integer = 0;
-	state->number_fractional = 0;
-	state->number_exponent = 0;
-
-	//Scan the integer part
-	state->number_integer = eei_lexer_consume_digits(state);
-
-	//Scan the fractional part
-	if (*state->head == '.')
-	{
-		state->head++;
-
-		//A number MUST follow
-		if (!eei_lexer_is_number(*state->head))
-			return eei_token_error;
-
-		state->number_fractional = eei_lexer_consume_digits(state);
-	}
-
-	if (eei_lexer_is_alpha(*state->head))
-	{
-		//No other letter except 'e' is allowed adjacent to a number
-		if (*state->head != 'e')
-			return eei_token_error;
-	}
-
-	//Scan the exponent part
-	if (*state->head == 'e')
-	{
-		state->number_exponent = 1;
-
-		state->head++;
-
-		//A number or sign MUST follow
-
-		if (*state->head == '+')
-		{
-			state->head++;
-		}
-		else if (*state->head != '-')
-		{
-			state->number_exponent = -1;
-			state->head++;
-		}
-		else if (!eei_lexer_is_number(*state->head))
-			return eei_token_error;
-
-		state->number_exponent *= eei_lexer_consume_digits(state);
-	}
-
-	return eei_token_number;
-}
-
 eei_token_type eei_lexer_next_token(eei_lexer_state * state)
 {
 	//Parse the input stream for the next token
@@ -200,7 +285,12 @@ eei_token_type eei_lexer_next_token(eei_lexer_state * state)
 	//The first character determines the token class
 
 	if (eei_lexer_is_number(*state->head))
-		return eei_lexer_consume_number(state);
+	{
+		state->head = EEI_CONSTANT_SCANNER(state->head);
+
+		if (state->head != state->start)
+			return eei_token_number;
+	}
 
 	if (eei_lexer_is_alpha(*state->head))
 		return eei_lexer_consume_identifier(state);
@@ -1003,6 +1093,10 @@ typedef struct
 	//Counts
 	int variables;
 	int functions;
+
+	//Library data
+	const ee_compilation_data_functions * library;
+	int library_functions;
 } eei_parser_symboltable;
 
 struct eei_parser_
@@ -1146,11 +1240,40 @@ static inline ee_parser_reply eei_parse_pushGroupRule(
 //Parser symbol table handling
 //----------------------------
 
+int eei_parse_symbols_init_count_functions(const ee_compilation_data_functions * functions)
+{
+	int count = 0;
+	if (functions->meta.names && functions->data)
+	{
+			const ee_char_type * const * names = functions->meta.names;
+			ee_compilation_data_function * values = functions->data;
+
+			if (functions->meta.count == 0)
+				//No actual limit
+				while (*names && values->function)
+				{
+					count++;
+					names++;
+					values++;
+				}
+			else
+				while (*names && values->function && (count < functions->meta.count))
+				{
+					count++;
+					names++;
+					values++;
+				}
+	}
+
+	return count;
+}
+
 ee_parser_reply eei_parse_symbols_init(
 		eei_parser * parser,
 		const ee_compilation_data *data)
 {
 	parser->symboltable.foreign = data;
+	parser->symboltable.library = &EEI_FUNCTION_LIBRARY;
 
 	//This is the naive implementation that will just perform a linear search
 	//	over all available symbol.
@@ -1179,29 +1302,8 @@ ee_parser_reply eei_parse_symbols_init(
 				}
 	}
 
-
-	parser->symboltable.functions = 0;
-	if (data->functions.meta.names && data->functions.data)
-	{
-			const ee_char_type * const * names = data->functions.meta.names;
-			ee_compilation_data_function * values = data->functions.data;
-
-			if (data->functions.meta.count == 0)
-				//No actual limit
-				while (*names && values->function)
-				{
-					parser->symboltable.functions++;
-					names++;
-					values++;
-				}
-			else
-				while (*names && values->function && (parser->symboltable.functions < data->functions.meta.count))
-				{
-					parser->symboltable.functions++;
-					names++;
-					values++;
-				}
-	}
+	parser->symboltable.functions = eei_parse_symbols_init_count_functions(&data->functions);
+	parser->symboltable.library_functions = eei_parse_symbols_init_count_functions(parser->symboltable.library);
 
 	return ee_parser_ok;
 }
@@ -1262,35 +1364,35 @@ ee_variable_type * eei_parse_symbols_get_variable(
 	return NULL;
 }
 
-ee_function eei_parse_symbols_get_function(
-		eei_parser * parser,
+ee_function eei_parse_symbols_get_function_single(
+		const ee_char_type * token_start,
+		const ee_char_type * token_end,
+		const ee_compilation_data_functions * functions,
+		int functions_count,
 		ee_arity arity,
-		const eei_parser_node * node,
 		int * wrong_arity)
 {
 	//Returns the function pointed to by the node, with a compatible arity, or NULL on error.
-	const ee_char_type * token_start = &parser->expression[node->text.start];
-	const ee_char_type * token_end = &parser->expression[node->text.end];
 
 	int seen = 0;
 	int index = 0;
 
-	while (index < parser->symboltable.functions)
+	while (index < functions_count)
 	{
 		index =
 				eei_parse_symbols_get_name(
-					parser->symboltable.foreign->functions.meta.names,
+					functions->meta.names,
 					index,
-					parser->symboltable.functions,
+					functions_count,
 					token_start,
 					token_end);
 
-		if (index < parser->symboltable.functions)
+		if (index < functions_count)
 		{
 			seen = 1;
 
 			//Test for correct arity
-			ee_arity found_arity = parser->symboltable.foreign->functions.data[index].arity;
+			ee_arity found_arity = functions->data[index].arity;
 
 			if (found_arity >= 0)
 			{
@@ -1315,7 +1417,7 @@ ee_function eei_parse_symbols_get_function(
 			}
 
 			//We found it!
-			return parser->symboltable.foreign->functions.data[index].function;
+			return functions->data[index].function;
 		}
 
 		index++;
@@ -1327,6 +1429,42 @@ ee_function eei_parse_symbols_get_function(
 	return NULL;
 }
 
+ee_function eei_parse_symbols_get_function(
+		eei_parser * parser,
+		ee_arity arity,
+		const eei_parser_node * node,
+		int * wrong_arity)
+{
+	const ee_char_type * token_start = &parser->expression[node->text.start];
+	const ee_char_type * token_end = &parser->expression[node->text.end];
+
+	//Search inside the library
+	ee_function library =
+			eei_parse_symbols_get_function_single
+			(
+				token_start,
+				token_end,
+				parser->symboltable.library,
+				parser->symboltable.library_functions,
+				arity,
+				wrong_arity
+			);
+
+	if (library)
+		return library;
+
+	//Not found in the library, search in the foreign table
+	return
+			eei_parse_symbols_get_function_single
+			(
+				token_start,
+				token_end,
+				&parser->symboltable.foreign->functions,
+				parser->symboltable.functions,
+				arity,
+				wrong_arity
+			);
+}
 
 //Parser core functions
 //---------------------
@@ -1664,13 +1802,15 @@ void eei_parse_expression(eei_parser * parser)
 
 ee_parser_reply eei_rule_handler_number(eei_parser * parser, const eei_parser_node * node)
 {
-	eei_lexer_state state;
-	state.head = &parser->expression[node->text.start];
+	ee_variable_type constant;
 
-	if (eei_lexer_consume_number(&state) == eei_token_error)
+	if (EEI_CONSTANT_PARSER(
+			&parser->expression[node->text.start],
+			&parser->expression[node->text.end],
+			&constant) != 0)
 		return ee_parser_expression_not_a_constant;
 
-	return eei_vmmake_load_constant(&parser->vm, state.number_integer);
+	return eei_vmmake_load_constant(&parser->vm, constant);
 }
 
 ee_parser_reply eei_rule_handler_variable(eei_parser * parser, const eei_parser_node * node)

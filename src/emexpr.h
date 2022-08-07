@@ -39,6 +39,25 @@ typedef signed char ee_arity;
 //A pointer to a user visible variable
 typedef ee_variable_type * ee_variable;
 
+//The following two prototypes are for compiling the library with user-defined constant parsers.
+//Two functions with the below prototypes should be written.
+//The names of the functions should be supplied using two pre-processor #define macros,
+//	EE_USER_CONSTANT_SCANNER & EE_USER_CONSTANT_PARSER. Theese macros should be visible during
+//	the compilation of emexpr.c.
+//This can be achieved by either writing them directly in this header, providing them at the command line,
+//	or any other appropriate mechanism.
+
+//A user defined scanner of constants
+//On success it should return the pointer to the first character AFTER the scanned constant
+//On failure it should return 'start'
+typedef const ee_char_type * (*ee_constant_scanner)(const ee_char_type * start);
+
+//A user defined parser of constants
+//It must scan the expression from start to one-before end, read-only
+//On success it should return zero and fill the result with the parsed value
+//On failure it should return non-zero, the result will be ignored
+typedef int (*ee_constant_parser)(const ee_char_type * start, const ee_char_type * end, ee_variable_type * result);
+
 //A user defined function
 //The arity is the number of parameters passed to the function.
 //The actuals is an array of the parameters themselves, in order.

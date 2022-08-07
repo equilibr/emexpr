@@ -19,37 +19,6 @@ union
 } global_environment;
 
 
-int subneg(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
-{
-	switch (arity)
-	{
-		case 1:
-			*result = -actuals[0];
-			return 0;
-
-		case 2:
-			*result = actuals[0] - actuals[1];
-			return 0;
-
-		default:
-			return 1;
-	}
-}
-
-int plus(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
-{
-	(void)arity;
-	*result = actuals[0] + actuals[1];
-	return 0;
-}
-
-int mul(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
-{
-	(void)arity;
-	*result = actuals[0] * actuals[1];
-	return 0;
-}
-
 int mega(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
 {
 	(void)arity;
@@ -99,10 +68,6 @@ int acuum(ee_element_count arity, const ee_variable_type * actuals, ee_variable 
 //Global handling functions
 
 ee_compilation_data_function funcData[] = {
-	{subneg,1},
-	{subneg,2},
-	{plus,2},
-	{mul,2},
 	{mega,1},
 	{milli,1},
 	{pi, 0},
@@ -112,7 +77,7 @@ ee_compilation_data_function funcData[] = {
 	{0,0}
 };
 
-const char * funcNames[] = {"-","-","+","*","M","m","pi","unity","arity","acuum"};
+const char * funcNames[] = {"M","m","pi","unity","arity","acuum"};
 
 ee_variable_type var1, var2;
 
