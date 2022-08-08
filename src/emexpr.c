@@ -227,6 +227,16 @@ static const ee_compilation_data_functions eei_operators_library =
 
 #endif
 
+//Generic macros
+//--------------
+
+//Create a bitmask of specified width and offset
+#define BITMASK(width) ((( (1ULL<<((width) - 1)) - 1) << 1) | 1 )
+#define BITMASKS(width, offset) (BITMASK(width) << (offset))
+
+#define MAKE_PART_BITS(data, offset, size) ( ((data) & BITMASK(size)) << (offset) )
+#define GET_PART_BITS(data, offset, size) ( ((data) >> (offset)) & BITMASK(size) )
+
 
 //Lexer
 //-----
@@ -253,7 +263,56 @@ typedef enum
 	eei_token_sentinel
 } eei_token_type;
 
-typedef char * tExpressionItem;
+//Holds the token type and the symbol
+//A token has two parts:
+//	A type, as enumerated in eei_token_type
+//	A symbol, used to differentiate between the various delimiters and operators
+typedef unsigned short int eei_token;
+
+//A list of token symbols with special meaning
+enum
+{
+	//Denote a wildcard (any) possible symbol
+	token_symbol_any = 0
+};
+
+//Field sizes and offsets of the various parts for the token
+enum
+{
+	//Base offset for the token data
+	eei_token_bits_start_offset = 0,
+
+	//Token symbol
+	eei_token_bits_char_size = sizeof(ee_char_type) * __CHAR_BIT__,
+
+	//Token type. Must accomodate eei_token_type (without the sentinel)
+	eei_token_bits_type_size = 3,
+
+	//Offset for the symbol part of a token
+	eei_token_bits_char_offset = eei_token_bits_start_offset,
+
+	//Offset for the type part of a token
+	eei_token_bits_type_offset = eei_token_bits_char_offset + eei_token_bits_char_size,
+
+	//Compound size of a token
+	//The _check_type_sizes struct uses this to validate all parts fit in the data type used for the token
+	eei_token_bits_size = eei_token_bits_char_size + eei_token_bits_type_size + eei_token_bits_start_offset,
+};
+
+//Create a token from its parts
+#define MAKE_TOKEN(token_type, token_symbol) \
+	(eei_token)(\
+	MAKE_PART_BITS(token_type, eei_token_bits_type_offset, eei_token_bits_type_size) |\
+	MAKE_PART_BITS(token_symbol, eei_token_bits_char_offset, eei_token_bits_char_size) \
+	)
+
+//Create a simple token that does not use the symbol
+#define MAKE_SIMPLE_TOKEN(token_type) MAKE_TOKEN(token_type, token_symbol_any)
+
+//Extract token data from a token
+#define GET_TOKEN_TYPE(token) (eei_token_type)GET_PART_BITS(token, eei_token_bits_type_offset, eei_token_bits_type_size)
+#define GET_TOKEN_SYMBOL(token) (ee_char_type)GET_PART_BITS(token, eei_token_bits_char_offset, eei_token_bits_char_size)
+
 
 typedef struct
 {
@@ -322,7 +381,7 @@ int eei_lexer_consume_digits(eei_lexer_state * state)
 	return number;
 }
 
-eei_token_type eei_lexer_consume_identifier(eei_lexer_state * state)
+static inline void eei_lexer_consume_identifier(eei_lexer_state * state)
 {
 	//An identifier can consist of alpha or numerics
 	do { ++state->head; } while
@@ -334,11 +393,9 @@ eei_token_type eei_lexer_consume_identifier(eei_lexer_state * state)
 				 || eei_lexer_is_number(*state->head)
 				 )
 			 );
-
-	return eei_token_identifier;
 }
 
-eei_token_type eei_lexer_next_token(eei_lexer_state * state)
+eei_token eei_lexer_next_token(eei_lexer_state * state)
 {
 	//Parse the input stream for the next token
 
@@ -348,7 +405,7 @@ eei_token_type eei_lexer_next_token(eei_lexer_state * state)
 	state->start = state->head;
 
 	if (eei_lexer_is_eof(*state->head))
-		return eei_token_eof;
+		return MAKE_SIMPLE_TOKEN(eei_token_eof);
 
 	//The first character determines the token class
 
@@ -357,27 +414,30 @@ eei_token_type eei_lexer_next_token(eei_lexer_state * state)
 		state->head = EEI_CONSTANT_SCANNER(state->head);
 
 		if (state->head != state->start)
-			return eei_token_constant;
+			return MAKE_SIMPLE_TOKEN(eei_token_constant);
 	}
 
 	if (eei_lexer_is_alpha(*state->head))
-		return eei_lexer_consume_identifier(state);
+	{
+		eei_lexer_consume_identifier(state);
+		return MAKE_SIMPLE_TOKEN(eei_token_identifier);
+	}
 
 	if (eei_lexer_is_delimiter(*state->head))
 	{
 		//Delimiters are always single character
 		state->head++;
-		return eei_token_delimiter;
+		return MAKE_TOKEN(eei_token_delimiter, *state->start);
 	}
 
 	if (eei_lexer_is_operator(*state->head))
 	{
 		//Only single-character operators are currently supported
 		state->head++;
-		return eei_token_operator;
+		return MAKE_TOKEN(eei_token_operator, *state->start);
 	}
 
-	return eei_token_error;
+	return MAKE_SIMPLE_TOKEN(eei_token_error);
 }
 
 //Parser rule types
@@ -397,19 +457,6 @@ typedef enum
 	eei_rule_right
 } eei_rule_associativity;
 
-
-//Holds the token type and the symbol
-//A token has two parts:
-//	A type, as enumerated in eei_token_type
-//	A symbol, used to differentiate between the various delimiters and operators
-typedef unsigned short int eei_token;
-
-//A list of token symbols with special meaning
-enum
-{
-	//Denote a wildcard (any) possible symbol
-	token_symbol_any = 0
-};
 
 //Holds a parsing rule
 //A rule consists of a token and the rule type, as enumerated in eei_rule_type
@@ -482,10 +529,7 @@ ee_parser_reply eei_rule_handler_function(eei_parser * parser, const eei_parser_
 typedef enum
 {
 	//Token symbol
-	eei_rule_bits_token_char_size = sizeof(ee_char_type) * __CHAR_BIT__,
-
-	//Token type. Must accomodate eei_token_type (without the sentinel)
-	eei_rule_bits_token_type_size = 3,
+	eei_rule_bits_token_size = eei_token_bits_size,
 
 	//Rule type. Must accomodate eei_rule_type
 	eei_rule_bits_type_size = 2,
@@ -504,10 +548,6 @@ typedef enum
 
 	//Rule description look behind flag. Single bit.
 	eei_rule_bits_look_behind_size = 1,
-
-	//Compound size of a token
-	//The _check_type_sizes struct uses this to validate all parts fit in the data type used for the token
-	eei_rule_bits_token_size = eei_rule_bits_token_char_size + eei_rule_bits_token_type_size,
 
 	//Compound size of a rule
 	//The _check_type_sizes struct uses this to validate all parts fit in the data type used for the rule
@@ -528,12 +568,6 @@ typedef enum
 
 	//Token
 	//-----
-
-	//Offset for the symbol part of a token
-	eei_rule_bits_token_char_offset = eei_rule_bits_start_offset,
-
-	//Offset for the type part of a token
-	eei_rule_bits_token_type_offset = eei_rule_bits_token_char_offset + eei_rule_bits_token_char_size,
 
 	//Offset of the complete token
 	eei_rule_bits_token_offset = eei_rule_bits_start_offset,
@@ -575,27 +609,6 @@ typedef enum
 	eei_rule_bits_total_size = eei_rule_bits_look_behind_offset + eei_rule_bits_look_behind_size
 } eei_rule_offsets;
 
-
-//Create a bitmask of specified width and offset
-#define BITMASK(width) ((( (1ULL<<((width) - 1)) - 1) << 1) | 1 )
-#define BITMASKS(width, offset) (BITMASK(width) << (offset))
-
-#define MAKE_PART_BITS(data, offset, size) ( ((data) & BITMASK(size)) << (offset) )
-#define GET_PART_BITS(data, offset, size) ( ((data) >> (offset)) & BITMASK(size) )
-
-//Create a token from its parts
-#define MAKE_TOKEN(token_type, token_symbol) \
-	(eei_token)(\
-	MAKE_PART_BITS(token_type, eei_rule_bits_token_type_offset, eei_rule_bits_token_type_size) |\
-	MAKE_PART_BITS(token_symbol, eei_rule_bits_token_char_offset, eei_rule_bits_token_char_size) \
-	)
-
-//Create a simple token that does not use the symbol
-#define MAKE_SIMPLE_TOKEN(token_type) \
-	(eei_token)(\
-	MAKE_PART_BITS(token_type, eei_rule_bits_token_type_offset, eei_rule_bits_token_type_size) |\
-	MAKE_PART_BITS(token_symbol_any, eei_rule_bits_token_char_offset, eei_rule_bits_token_char_size) \
-	)
 
 //Create a rule from its parts
 #define MAKE_RULE(token, type) \
@@ -685,12 +698,8 @@ typedef enum
 
 //Extract a token and data from a rule description
 #define GET_RULE_TOKEN(rule_description) ((eei_token)GET_PART_BITS(rule_description, eei_rule_bits_token_offset, eei_rule_bits_token_size))
-#define GET_RULE_TOKEN_TYPE(rule) (eei_token_type)GET_PART_BITS(rule, eei_rule_bits_token_type_offset, eei_rule_bits_token_type_size)
-#define GET_RULE_TOKEN_SYMBOL(rule) (ee_char_type)GET_PART_BITS(rule, eei_rule_bits_token_char_offset, eei_rule_bits_token_char_size)
-
-//Extract token data from a token
-#define GET_TOKEN_TYPE(token) (eei_token_type)GET_PART_BITS(token, eei_rule_bits_token_type_offset-eei_rule_bits_token_offset, eei_rule_bits_token_type_size)
-#define GET_TOKEN_SYMBOL(token) (ee_char_type)GET_PART_BITS(token, eei_rule_bits_token_char_offset-eei_rule_bits_token_offset, eei_rule_bits_token_char_size)
+#define GET_RULE_TOKEN_TYPE(rule_description) GET_TOKEN_TYPE(GET_RULE_TOKEN(rule_description))
+#define GET_RULE_TOKEN_SYMBOL(rule_description) GET_TOKEN_SYMBOL(GET_RULE_TOKEN(rule_description))
 
 //Clear spesific parts of a rule
 #define CLEAR_RULE_TOKEN(rule_description) ((rule_description) & ~BITMASKS(eei_rule_bits_token_size, eei_rule_bits_token_offset))
@@ -1973,16 +1982,11 @@ void eei_parse_expression(eei_parser * parser)
 	while ((parser->status == ee_parser_ok) && (parser->stack.top))
 	{
 		eei_parser_token token;
-		const eei_token_type token_type = eei_lexer_next_token(&lexer_state);
+		token.token = eei_lexer_next_token(&lexer_state);
 
-		//Create a complete token
+		//Convert from lexer to parser representation
 		token.text.start = lexer_state.start - parser->expression;
 		token.text.end = lexer_state.head - parser->expression;
-
-		if ((token_type == eei_token_delimiter) || (token_type == eei_token_operator))
-			token.token = MAKE_TOKEN(token_type, *lexer_state.start);
-		else
-			token.token = MAKE_SIMPLE_TOKEN(token_type);
 
 		eei_parse_token(parser, &token);
 	}
@@ -2465,7 +2469,7 @@ ee_parser_reply ee_guestimate(const ee_char_type * expression, ee_data_size * si
 	state.head = expression;
 	do
 	{
-		token_type = eei_lexer_next_token(&state);
+		token_type = GET_TOKEN_TYPE(eei_lexer_next_token(&state));
 
 		switch (token_type)
 		{
@@ -2664,8 +2668,8 @@ ee_evaluator_reply ee_evaluate(ee_environment environment, ee_variable result)
 //When a check fails the compilation will halt with an error of: "check type" declared as an array with a negative size
 struct check_type_sizes
 {
-	int not_enough_bits_for_token_type[((1 << eei_rule_bits_token_type_size) >= eei_token_sentinel) ? 1 : -1];
-	int not_enough_bits_for_token[(sizeof(eei_token) * __CHAR_BIT__ >= eei_rule_bits_token_size) ? 1 : -1];
+	int not_enough_bits_for_token_type[((1 << eei_token_bits_type_size) >= eei_token_sentinel) ? 1 : -1];
+	int not_enough_bits_for_token[(sizeof(eei_token) * __CHAR_BIT__ >= eei_token_bits_size) ? 1 : -1];
 	int not_enough_bits_for_rule[(sizeof(eei_rule) * __CHAR_BIT__ >= eei_rule_bits_rule_size) ? 1 : -1];
 	int not_enough_bits_for_precedence[(1 << ((sizeof(eei_precedence) * __CHAR_BIT__) >= eei_rule_bits_precedence_size)) ? 1 : -1];
 	int not_enough_bits_for_rule_description[(sizeof(eei_rule_description) * __CHAR_BIT__ >= eei_rule_bits_total_size) ? 1 : -1];
