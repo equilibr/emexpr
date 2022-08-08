@@ -155,6 +155,7 @@ const char * parser_status_string(ee_parser_reply reply)
 	static const char * strings[] =
 	{
 		"ok",
+		"stored",
 		"empty",
 		"error",
 		"stack error",
@@ -177,7 +178,8 @@ const char * parser_status_string(ee_parser_reply reply)
 		"not constants",
 		"not identifier",
 		"empty group",
-		"over. group"
+		"over. group",
+		"null assign"
 	};
 
 	return strings[reply];
@@ -189,6 +191,7 @@ const char * eval_status_string(ee_evaluator_reply reply)
 	{
 		"ok",
 		"empty",
+		"stack ext.",
 		"stack und.",
 	};
 
@@ -226,7 +229,11 @@ int test_expression(const char * expression)
 	}
 
 	ee_variable_type result = 0;
-	ee_evaluator_reply ereply = ee_evaluate(&global_environment.header, &result);
+	ee_evaluator_reply ereply =
+			ee_evaluate(
+				&global_environment.header,
+				(reply != ee_parser_store) ? &result : NULL);
+
 	if (reply || ereply)
 	{
 		printf("%8s ", " ");
@@ -251,17 +258,17 @@ int test_expression(const char * expression)
 int main()
 {
 	test_print_header();
+	var1 = 0;
 
 	//Mark empty expression during parsing!
 	test_expression("");
 
-	var1 = 1;
+	test_expression("a = 1");
 	test_expression("a");
-	var1 = 0;
-	test_expression("a + 1");
-
+	test_expression("a = 0");
+	test_expression("!a");
+	test_expression("a = pi() / pi - 1");
 	test_expression("2M * (1/2)m");
-	test_expression("pi() / pi");
 	test_expression("1 * 1");
 	test_expression("-(1 * -1)");
 	test_expression("-1 * -1");
@@ -275,6 +282,20 @@ int main()
 	test_expression("!^^(0,1,1)");
 	test_expression("1.01 - 0.1/10");
 
+	//Extra stack values
+	//TODO: Something is definetely wrong with this one...
+	test_expression("a = 0,a");
+	test_expression("a");
+
+	//Refuse assign to non-variable
+	test_expression("0 = 0");
+	test_expression("a+0 = 0");
+	test_expression("0+a = 0");
+	test_expression("a,a = 0");
+	test_expression("a = c");
+	test_expression("c = a");
+	test_expression("arity() = 0");
+
 	//Refuse wrong arity
 	test_expression("-(1,0,1)");
 	test_expression("&&()");
@@ -285,6 +306,7 @@ int main()
 	test_expression("2&3");
 
 	//Refuse incorrect grammar
+	test_expression("a =");
 	test_expression("()");
 	test_expression("(())");
 	test_expression("(1+");

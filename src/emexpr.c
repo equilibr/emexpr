@@ -17,7 +17,11 @@
 //User-selectable definitions
 //---------------------------
 
+//Allow using prefix operators with functional syntax
 #define EEI_ALLOW_PREFIX_OPERATOR_FUNCTIONS 1
+
+//Allow assigning into variables
+#define EEI_ALLOW_ASSIGN 1
 
 
 
@@ -549,6 +553,13 @@ typedef enum
 	eei_rule_right
 } eei_rule_associativity;
 
+typedef enum
+{
+	eei_rule_normal_fold,
+	eei_rule_delay_fold,
+	eei_rule_no_fold,
+} eei_rule_fold;
+
 
 //Holds a parsing rule
 //A rule consists of a token and the rule type, as enumerated in eei_rule_type
@@ -613,6 +624,7 @@ ee_parser_reply eei_rule_handler_prefix(eei_parser * parser, const eei_parser_no
 ee_parser_reply eei_rule_handler_infix(eei_parser * parser, const eei_parser_node * node);
 ee_parser_reply eei_rule_handler_postfix(eei_parser * parser, const eei_parser_node * node);
 ee_parser_reply eei_rule_handler_function(eei_parser * parser, const eei_parser_node * node);
+ee_parser_reply eei_rule_handler_assign(eei_parser * parser, const eei_parser_node * node);
 
 //Parser rules
 //------------
@@ -635,8 +647,8 @@ typedef enum
 	//Rule description end-delimited flag. Single bit.
 	eei_rule_bits_end_delimiter_size = 1,
 
-	//Rule description delayed fold flag. Single bit.
-	eei_rule_bits_delayed_fold_size = 1,
+	//Rule description fold indicator. Must accomodate eei_rule_fold
+	eei_rule_bits_fold_size = 2,
 
 	//Rule description look behind flag. Single bit.
 	eei_rule_bits_look_behind_size = 1,
@@ -691,10 +703,10 @@ typedef enum
 	eei_rule_bits_end_delimiter_offset = eei_rule_bits_accosiativity_offset + eei_rule_bits_accosiativity_size,
 
 	//Offset for the delayed fold flag of a rule description
-	eei_rule_bits_delayed_fold_offset = eei_rule_bits_end_delimiter_offset + eei_rule_bits_end_delimiter_size,
+	eei_rule_bits_fold_offset = eei_rule_bits_end_delimiter_offset + eei_rule_bits_end_delimiter_size,
 
 	//Offset for the look behind flag of a rule description
-	eei_rule_bits_look_behind_offset = eei_rule_bits_delayed_fold_offset + eei_rule_bits_delayed_fold_size,
+	eei_rule_bits_look_behind_offset = eei_rule_bits_fold_offset + eei_rule_bits_fold_size,
 
 	//Total size of a rule description, in bits
 	//The _check_type_sizes struct uses this to validate all parts fit in the data type used for the rule description
@@ -710,44 +722,48 @@ typedef enum
 	)
 
 //Create a rule description from its parts
-#define MAKE_RULE_DESCRIPTION(rule, precedence, next, accosiativity, end_delimiter, delayed_fold, look_behind) \
+#define MAKE_RULE_DESCRIPTION(rule, precedence, next, accosiativity, end_delimiter, fold, look_behind) \
 	(eei_rule_description)(\
 	MAKE_PART_BITS(rule, eei_rule_bits_rule_offset, eei_rule_bits_rule_size) |\
 	MAKE_PART_BITS(precedence, eei_rule_bits_precedence_offset, eei_rule_bits_precedence_size) |\
 	MAKE_PART_BITS(next, eei_rule_bits_next_offset, eei_rule_bits_next_size) |\
 	MAKE_PART_BITS(accosiativity, eei_rule_bits_accosiativity_offset, eei_rule_bits_accosiativity_size) |\
 	MAKE_PART_BITS(end_delimiter, eei_rule_bits_end_delimiter_offset, eei_rule_bits_end_delimiter_size) |\
-	MAKE_PART_BITS(delayed_fold, eei_rule_bits_delayed_fold_offset, eei_rule_bits_delayed_fold_size) |\
+	MAKE_PART_BITS(fold, eei_rule_bits_fold_offset, eei_rule_bits_fold_size) |\
 	MAKE_PART_BITS(look_behind, eei_rule_bits_look_behind_offset, eei_rule_bits_look_behind_size)\
 	)
 
 //Make a prefix rule description
-#define MAKE_PREFIX_RULE(token, end_delimiter, delayed_fold, look_behind, next) \
-	MAKE_RULE_DESCRIPTION(MAKE_RULE(token, eei_rule_prefix), 0, next, eei_rule_right, end_delimiter, delayed_fold, look_behind)
+#define MAKE_PREFIX_RULE(token, end_delimiter, fold, look_behind, next) \
+	MAKE_RULE_DESCRIPTION(MAKE_RULE(token, eei_rule_prefix), 0, next, eei_rule_right, end_delimiter, fold, look_behind)
 
 //Make a default prefix rule description
-#define MAKE_DEFAULT_PREFIX_RULE(token) MAKE_PREFIX_RULE(token, 0, 0, 0, eei_rule_prefix)
+#define MAKE_DEFAULT_PREFIX_RULE(token) MAKE_PREFIX_RULE(token, 0, eei_rule_normal_fold, 0, eei_rule_prefix)
 
 //Make a default-delayed prefix rule description
-#define MAKE_DELAYED_PREFIX_RULE(token) MAKE_PREFIX_RULE(token, 0, 1, 0, eei_rule_prefix)
+#define MAKE_DELAYED_PREFIX_RULE(token) MAKE_PREFIX_RULE(token, 0, eei_rule_delay_fold, 0, eei_rule_prefix)
 
 //Make a leaf prefix rule description
-#define MAKE_TERMINAL_PREFIX_RULE(token, delayed_fold) MAKE_PREFIX_RULE(token, 0, delayed_fold, 0, eei_rule_infix)
+#define MAKE_TERMINAL_PREFIX_RULE(token, fold) MAKE_PREFIX_RULE(token, 0, fold, 0, eei_rule_infix)
 
 //Make a prefix rule with a look-behind condition description
 //The matching rule MUST appear in the look-behind table
-#define MAKE_LOOK_BEHIND_PREFIX_RULE(token) MAKE_PREFIX_RULE(token, 0, 0, 1, eei_rule_prefix)
+#define MAKE_LOOK_BEHIND_PREFIX_RULE(token) MAKE_PREFIX_RULE(token, 0, eei_rule_normal_fold, 1, eei_rule_prefix)
 
 //Make a delimited prefix rule description
 //The matching rule MUST appear in the end-rules table
-#define MAKE_DELIMITED_PREFIX_RULE(token) MAKE_PREFIX_RULE(token, 1, 0, 0, eei_rule_prefix)
+#define MAKE_DELIMITED_PREFIX_RULE(token) MAKE_PREFIX_RULE(token, 1, eei_rule_normal_fold, 0, eei_rule_prefix)
 
 //Make a infix rule description
 #define MAKE_INFIX_RULE(token, precedence, accosiativity, end_delimiter) \
-	MAKE_RULE_DESCRIPTION(MAKE_RULE(token, eei_rule_infix), precedence, eei_rule_prefix, accosiativity, end_delimiter, 0, 0)
+	MAKE_RULE_DESCRIPTION(MAKE_RULE(token, eei_rule_infix), precedence, eei_rule_prefix, accosiativity, end_delimiter, eei_rule_normal_fold, 0)
 
 //Make a default infix rule description
 #define MAKE_DEFAULT_INFIX_RULE(token, precedence) MAKE_INFIX_RULE(token, precedence, eei_rule_left, 0)
+
+//Make a default infix rule description
+#define MAKE_NOFOLD_INFIX_RULE(token, precedence) \
+	MAKE_RULE_DESCRIPTION(MAKE_RULE(token, eei_rule_infix), precedence, eei_rule_prefix, eei_rule_left, 0, eei_rule_no_fold, 0)
 
 //Make a delimited infix rule description
 //The matching rule MUST appear in the end-rules table
@@ -755,11 +771,11 @@ typedef enum
 
 //Make a default postfix rule description
 #define MAKE_POSTFIX_RULE(token, precedence) \
-	MAKE_RULE_DESCRIPTION(MAKE_RULE(token, eei_rule_postfix), precedence, eei_rule_infix, eei_rule_left, 0, 0, 0)
+	MAKE_RULE_DESCRIPTION(MAKE_RULE(token, eei_rule_postfix), precedence, eei_rule_infix, eei_rule_left, 0, eei_rule_normal_fold, 0)
 
 //Make an end rule to match a delimited rule description
 #define MAKE_END_RULE(token) \
-	MAKE_RULE_DESCRIPTION(MAKE_RULE(token, eei_rule_end), 0, eei_rule_prefix, eei_rule_left, 0, 0, 0)
+	MAKE_RULE_DESCRIPTION(MAKE_RULE(token, eei_rule_end), 0, eei_rule_prefix, eei_rule_left, 0, eei_rule_normal_fold, 0)
 
 //Make a sentinel invalid rule to mark the end of a rules table
 #define MAKE_SENTINEL_RULE() MAKE_DEFAULT_PREFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_error))
@@ -785,7 +801,7 @@ typedef enum
 #define GET_RULE_NEXT(rule) (eei_rule)GET_PART_BITS(rule, eei_rule_bits_next_offset, eei_rule_bits_next_size)
 #define GET_RULE_ACCOSIATIVITY(rule) (eei_rule_associativity)GET_PART_BITS(rule, eei_rule_bits_accosiativity_offset, eei_rule_bits_accosiativity_size)
 #define GET_RULE_ENDDELIMITER(rule) GET_PART_BITS(rule, eei_rule_bits_end_delimiter_offset, eei_rule_bits_end_delimiter_size)
-#define GET_RULE_DELAYEDFOLD(rule) GET_PART_BITS(rule, eei_rule_bits_delayed_fold_offset, eei_rule_bits_delayed_fold_size)
+#define GET_RULE_FOLD(rule) (eei_rule_fold)GET_PART_BITS(rule, eei_rule_bits_fold_offset, eei_rule_bits_fold_size)
 #define GET_RULE_LOOK_BEHIND(rule) GET_PART_BITS(rule, eei_rule_bits_look_behind_offset, eei_rule_bits_look_behind_size)
 
 //Extract a token and data from a rule description
@@ -803,6 +819,7 @@ typedef enum
 //Operator precedence
 enum
 {
+	eei_precedence_assign = 1,
 	eei_precedence_comma = 2,
 	eei_precedence_logical_or = 3,
 	eei_precedence_logical_and = 4,
@@ -821,8 +838,8 @@ static const eei_rule_item eei_parser_prefix_rules[] =
 	//Expression start
 	STATE(MAKE_DELIMITED_PREFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_sof))),
 
-	HANDLE(MAKE_TERMINAL_PREFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_constant),0), eei_rule_handler_constant),
-	HANDLE(MAKE_TERMINAL_PREFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_identifier),1), eei_rule_handler_variable),
+	HANDLE(MAKE_TERMINAL_PREFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_constant),eei_rule_normal_fold), eei_rule_handler_constant),
+	HANDLE(MAKE_TERMINAL_PREFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_identifier),eei_rule_delay_fold), eei_rule_handler_variable),
 
 #	if EEI_ALLOW_PREFIX_OPERATOR_FUNCTIONS
 	//Prefix-operator call
@@ -840,6 +857,11 @@ static const eei_rule_item eei_parser_prefix_rules[] =
 
 static const eei_rule_item eei_parser_infix_rules[] =
 {
+#	if EEI_ALLOW_ASSIGN
+	//Variable assignment
+	HANDLE(MAKE_NOFOLD_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'='), eei_precedence_assign), eei_rule_handler_assign),
+#	endif
+
 	//Sequence delimiter
 	STATE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_delimiter,','), eei_precedence_comma)),
 
@@ -1181,12 +1203,15 @@ enum
 
 	//Execute a function
 	eei_vm_insturction_function = (0x05) << eei_vm_insturction_shift,
+
+	//Pop a variable from the stack and store it
+	eei_vm_insturction_store = (0x06) << eei_vm_insturction_shift,
 };
 
 typedef struct
 {
 	ee_variable_type * constants;
-	const ee_variable_type ** variables;
+	ee_variable_type ** variables;
 	ee_function * functions;
 	eei_vm_bytecode * instructions;
 } eei_vmmake_data;
@@ -1212,6 +1237,9 @@ typedef struct
 
 	//Currently used size for each datum
 	eei_vmmake_counters current;
+
+	//The last instruction that was emmited
+	eei_vm_bytecode last_instruction;
 
 } eei_vmmake_environment;
 
@@ -1249,6 +1277,8 @@ ee_parser_reply eei_vmmake_append_instruction(
 			((immediate & eei_vm_mask_immediate_shifted)
 			<< eei_vm_immediate_shift)
 			| instruction;
+
+	vm->last_instruction = instruction;
 
 	return ee_parser_ok;
 }
@@ -1289,7 +1319,7 @@ ee_parser_reply eei_vmmake_load_constant(
 
 ee_parser_reply eei_vmmake_load_variable(
 		eei_vmmake_environment * vm,
-		const ee_variable_type * variable)
+		ee_variable_type * variable)
 {
 	//Add a variable load bytecode
 
@@ -1368,6 +1398,39 @@ ee_parser_reply eei_vmmake_execute_functions(
 	}
 
 	return eei_vmmake_append_instruction(vm, eei_vm_insturction_function, index);
+}
+
+ee_parser_reply eei_vmmake_store_variable(
+		eei_vmmake_environment * vm,
+		ee_variable_type * variable)
+{
+	//Add a variable store bytecode
+
+	//Make sure there is something on the stack
+	if (vm->current.stack == 0)
+		return ee_parser_expression_empty_assign;
+
+	//Linear search through the variables table
+	int index;
+	for (index = 0; index < vm->current.variables; ++index)
+		if (vm->data.variables[index] == variable)
+			break;
+
+	if (index == vm->current.variables)
+	{
+		//Nothing found, we need to add a new variable to the table
+
+		if (vm->current.variables >= vm->max.variables)
+			return ee_parser_variables_overflow;
+
+		vm->data.variables[index] = variable;
+		vm->current.variables++;
+	}
+
+	//Update stack usage
+	vm->current.stack--;
+
+	return eei_vmmake_append_instruction(vm, eei_vm_insturction_store, index);
 }
 
 //Parser
@@ -1871,7 +1934,7 @@ static inline void eei_parse_foldPrefix(eei_parser * parser, int delay)
 		if (GET_RULE_TYPE(rule) != eei_rule_prefix)
 			break;
 
-		if (delay && GET_RULE_DELAYEDFOLD(rule))
+		if (delay && (GET_RULE_FOLD(rule) == eei_rule_delay_fold))
 			break;
 
 		eei_parse_done(parser);
@@ -1938,7 +2001,11 @@ void eei_parse_foldEndDilimiter(
 	//This will fold the synthetic gropup rule as well
 	++group;
 	while (parser->stack.top > group)
+	{
 		eei_parse_done(parser);
+		if (parser->status != ee_parser_ok)
+			return;
+	}
 
 	//Before folding the rule itself we need to update the current group
 	//	to the previous one, since the rule that created the current group is,
@@ -1973,6 +2040,8 @@ void eei_parse_foldEndDilimiter(
 
 	//Fold the rule that created the group.
 	eei_parse_done(parser);
+	if (parser->status != ee_parser_ok)
+		return;
 
 	//Sanity check
 	if (!parser->stack.top)
@@ -2017,14 +2086,16 @@ void eei_parse_token(eei_parser * parser, eei_parser_token * token)
 			case eei_rule_infix:
 				//Fold all prefixes before going any further
 				//	since they bind stonger than the infixes.
-				eei_parse_foldPrefix(parser, GET_RULE_ENDDELIMITER(rule->rule));
+				if (GET_RULE_FOLD(rule->rule) != eei_rule_no_fold)
+					eei_parse_foldPrefix(parser, GET_RULE_ENDDELIMITER(rule->rule));
 
 				eei_parse_foldPrecedence(parser, rule);
 				eei_parse_parseInfix(parser, rule, token);
 				break;
 
 			case eei_rule_postfix:
-				eei_parse_foldPrefix(parser, 0);
+				if (GET_RULE_FOLD(rule->rule) != eei_rule_no_fold)
+					eei_parse_foldPrefix(parser, 0);
 				eei_parse_foldPrecedence(parser, rule);
 				eei_parse_parsePostfix(parser, rule, token);
 				break;
@@ -2214,6 +2285,38 @@ ee_parser_reply eei_rule_handler_function(eei_parser * parser, const eei_parser_
 	return eei_vmmake_execute_functions(&parser->vm, op, arity);
 }
 
+ee_parser_reply eei_rule_handler_assign(eei_parser * parser, const eei_parser_node * node)
+{
+	//An identifier must be on the stack at this point
+	eei_parser_node identifier;
+
+	ee_parser_reply reply =
+			eei_parse_popT(
+				parser,
+				&identifier,
+				&((eei_parser_token){GET_RULE_TOKEN(node->rule->rule), node->text}));
+
+	if (reply != ee_parser_ok)
+		return reply;
+
+	if (GET_RULE_TOKEN_TYPE(identifier.rule->rule) != eei_token_identifier)
+		return eei_parse_set_error(
+					parser,
+					ee_parser_expression_identifier_expected,
+					&((eei_parser_token){GET_RULE_TOKEN(identifier.rule->rule), identifier.text}));
+
+	//Get the variables
+	ee_variable_type * var = eei_parse_symbols_get_variable(parser, &identifier);
+
+	if (!var)
+		return eei_parse_set_error(
+					parser,
+					ee_parser_unknown_variable,
+					&((eei_parser_token){GET_RULE_TOKEN(identifier.rule->rule), identifier.text}));
+
+	return eei_vmmake_store_variable(&parser->vm, var);
+}
+
 //Virtual machine execute
 //-----------------------
 
@@ -2224,7 +2327,7 @@ typedef struct
 	const ee_variable_type * constants;
 
 	//The (pointers-to) variables table
-	const ee_variable_type * const * variables;
+	ee_variable_type * const * variables;
 
 	//The functions table
 	const ee_function * functions;
@@ -2387,14 +2490,29 @@ ee_evaluator_reply eei_vm_execute(const eei_vm_environment * vm_environment)
 
 				break;
 			}
+
+			case eei_vm_insturction_store:
+				//The variables table holds pointers to the variables
+				//	so the requested index needs to be dereferenced to access
+				//	the actual user variable.
+				*vm_environment->variables[rt.accumulator] =
+						*--rt.stack_top;
+
+				//Clear the accumulator in preparation for the next instruction
+				rt.accumulator = 0;
+				break;
 		}
 	};
 
-	//The stack top hold the result of the evaluation
-	if (rt.stack_top == vm_environment->stack)
-		return ee_evaluator_empty;
+	//The stack top holds the result of the evaluation
+	const int stack = rt.stack_top - vm_environment->stack;
 
-	return ee_evaluator_ok;
+	if (stack == 0)
+		return ee_evaluator_empty;
+	else if (stack > 1)
+		return ee_evaluator_stack_extra;
+	else
+		return ee_evaluator_ok;
 }
 
 
@@ -2510,7 +2628,7 @@ char * eei_environment_calculate_pointers(
 		char * base)
 {
 	pointers->constants = (ee_variable_type*)(base + offsets->constants);
-	pointers->variables = (const ee_variable_type**)(base + offsets->variables);
+	pointers->variables = (ee_variable_type**)(base + offsets->variables);
 	pointers->functions = (ee_function*)(base + offsets->functions);
 	pointers->instructions = (eei_vm_bytecode*)(base + offsets->instructions);
 
@@ -2654,6 +2772,10 @@ ee_parser_reply ee_compile(
 	parser.vm.max.instructions = size->instructions;
 	//Reset the stack info since the parser will count the actual stack usage
 	parser.vm.max.stack = 0;
+	//Use the arity instruction as initial value since
+	//	it never can be the last instruction emmited under normal circunstances
+	parser.vm.last_instruction = eei_vm_insturction_arity;
+
 
 	//Calculate the VM tables memory locations
 	eei_environment_calculate_offsets(&full_env->offsets,(char *)&full_env->data[0],size);
@@ -2692,6 +2814,8 @@ ee_parser_reply ee_compile(
 
 	if ((parser.status == ee_parser_ok) && (parser.vm.current.instructions == 0))
 		compilation->reply = ee_parser_empty;
+	else if ((parser.status == ee_parser_ok) && (parser.vm.last_instruction == eei_vm_insturction_store))
+		compilation->reply = ee_parser_store;
 	else
 		compilation->reply = parser.status;
 
@@ -2717,7 +2841,7 @@ ee_evaluator_reply ee_evaluate(ee_environment environment, ee_variable result)
 				(char *)&full_env->data[0]);
 
 		vm_environment.constants = pointers.constants;
-		vm_environment.variables = (const ee_variable_type**)pointers.variables;
+		vm_environment.variables = pointers.variables;
 		vm_environment.functions = pointers.functions;
 		vm_environment.instructions = pointers.instructions;
 		vm_environment.stack = (ee_variable_type*)ptr;
@@ -2747,6 +2871,8 @@ ee_evaluator_reply ee_evaluate(ee_environment environment, ee_variable result)
 
 		*result = *vm_environment.stack;
 	}
+	else if (reply == ee_evaluator_ok)
+		return ee_evaluator_stack_extra;
 
 	return reply;
 }

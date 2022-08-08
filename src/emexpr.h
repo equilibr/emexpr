@@ -162,6 +162,10 @@ typedef enum
 	ee_parser_ok = 0,
 
 	//All is well but the expression is empty
+	//	because the last value on the stack is stored in a variable
+	ee_parser_store,
+
+	//All is well but the expression is empty
 	//	and will not return a result.
 	ee_parser_empty,
 
@@ -236,6 +240,9 @@ typedef enum
 	//An group (enclosed in parens) with too many elements was specified
 	ee_parser_expression_overfull_group,
 
+	//Assignment from an empty expression
+	ee_parser_expression_empty_assign
+
 } ee_parser_reply;
 
 //Status returned by the evaluator
@@ -248,7 +255,11 @@ typedef enum
 	//	and did not return a result.
 	ee_evaluator_empty,
 
-	ee_evaluator_stack_underflow
+	//There are more values than expected left on the stack
+	ee_evaluator_stack_extra,
+
+	//A result was expected on the stack but there was none
+	ee_evaluator_stack_underflow,
 } ee_evaluator_reply;
 
 //Holds size calculations from the guestimator and compilator
