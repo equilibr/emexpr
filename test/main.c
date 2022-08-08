@@ -101,7 +101,7 @@ ee_compilation_data global_compilation_data =
 void test_print_header()
 {
 	printf(
-				"%16s   %8s %16s %10s "
+				"%20s   %8s %16s %10s "
 				"%5s %4s %5s %5s %3s %3s %2s %5s   "
 				"%5s %4s %5s %5s %3s %3s %2s %5s   "
 				"%5s %5s %s\n",
@@ -206,7 +206,7 @@ int test_expression(const char * expression)
 	memset(&global_parser.header, 0, sizeof(ee_compilation_header));
 	memset(&global_environment.header, 0, sizeof(ee_environment_header));
 
-	printf("%16s = ",expression);
+	printf("%20s = ",expression);
 
 	reply = ee_guestimate(expression, &sizes);
 	memcpy(&sizes_guess, &sizes, sizeof(ee_data_size));
@@ -252,66 +252,28 @@ int main()
 {
 	test_print_header();
 
-	test_expression("1 m");
-	test_expression("1 M * 1 m");
-	test_expression("2 + 1 M * 1 m");
-
-	test_expression("pi()");
-	test_expression("pi");
-	test_expression("unity(pi())");
-	test_expression("unity(1+1)");
-	test_expression("arity()");
-	test_expression("arity(0)");
-	test_expression("arity(0,0)");
-	test_expression("acuum()");
-	test_expression("acuum(1)");
-	test_expression("acuum(1+2,-3)");
-	test_expression("acuum(pi(),pi)");
+	//Mark empty expression during parsing!
+	test_expression("");
 
 	var1 = 1;
 	test_expression("a");
+	var1 = 0;
 	test_expression("a + 1");
-	var1 = 10;
-	test_expression("a");
-	test_expression("a * 2");
 
-	test_expression("2 * 2");
-	test_expression("2 * -2");
-	test_expression("-2 * -2");
-	test_expression("2 * 3 + 4");
-	test_expression("2 * (3 + 4)");
-	test_expression("2 + 3 * 4");
-	test_expression("(2 + 3) * 4");
-
-	test_expression("-1");
-	test_expression("1-1");
-	test_expression("1 - -1");
-	test_expression("1 - (-1)");
+	test_expression("2M * (1/2)m");
+	test_expression("pi() / pi");
+	test_expression("1 * 1");
+	test_expression("-(1 * -1)");
+	test_expression("-1 * -1");
+	test_expression("2 * 3 + 4 == 10");
+	test_expression("14 == 2 * (3 + 4)");
+	test_expression(">(15,2 + 3 * 4)");
+	test_expression("(2 + 3) * 4 / 20");
 	test_expression("1 - (-1--1)");
-
-	test_expression("^^(0,1)");
-	test_expression("^^(0,0,1)");
-	test_expression("^^(0,1,1)");
-
-	test_expression("!1");
-	test_expression("1");
-	test_expression("(1)");
-	test_expression("((1))");
-
-	test_expression("0.1");
-	test_expression("1.23");
-	test_expression("0.2 - 1/5");
-	test_expression("1/5 + 0.8");
-
-	test_expression("2 == 1 + 1");
-	test_expression("1 + 1 != 2");
-	test_expression("2 > 1");
-	test_expression("-1 >= 1");
-	test_expression("!=(1,2)");
-
-	test_expression("-1");
-	test_expression("-(1)");
-	test_expression("-(1,0)");
+	test_expression("||(a,1)");
+	test_expression("^^(0,a,1)");
+	test_expression("!^^(0,1,1)");
+	test_expression("1.01 - 0.1/10");
 
 	//Refuse wrong arity
 	test_expression("-(1,0,1)");
@@ -322,19 +284,15 @@ int main()
 	test_expression("&(2)");
 	test_expression("2&3");
 
-	//Mark empty expression during parsing!
-	test_expression("");
+	//Refuse incorrect grammar
 	test_expression("()");
 	test_expression("(())");
-
-	//Refuse incorrect grammar
 	test_expression("(1+");
 	test_expression(")1+");
 	test_expression("1+(");
 	test_expression("1+)");
 	test_expression("novar");
-	test_expression("unity()");
-	test_expression("arity(1+(),(2))");
+	test_expression("nofunc()");
 
 	return 0;
 }
