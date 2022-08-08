@@ -191,33 +191,34 @@ int eei_operator_lessequal(ee_element_count arity, const ee_variable_type * actu
 
 int eei_operator_fold_and(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
 {
-	*result = (actuals[0] != 0) ? 1 : 0;
+	ee_variable_type r = (actuals[0] != 0) ? 1 : 0;
 
-	for (int i = 1; i < arity; ++i)
-		*result *= (actuals[i] != 0) ? 1 : 0;
+	for (int i = 1; (i < arity) && (r != 0); ++i)
+		r *= (actuals[i] != 0) ? 1 : 0;
 
+	*result = r;
 	return 0;
 }
 
 int eei_operator_fold_or(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
 {
-	*result = (actuals[0] != 0) ? 1 : 0;
+	ee_variable_type r = (actuals[0] != 0) ? 1 : 0;
 
-	for (int i = 1; i < arity; ++i)
-		*result += (actuals[i] != 0) ? 1 : 0;
+	for (int i = 1; (i < arity) && (r == 0); ++i)
+		r += (actuals[i] != 0) ? 1 : 0;
 
-	*result = (*result != 0) ? 1 : 0;
-
+	*result = (r != 0) ? 1 : 0;
 	return 0;
 }
 
 int eei_operator_fold_xor(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
 {
-	*result = (actuals[0] != actuals[1]) ? 1 : 0;
+	ee_variable_type r = (actuals[0] != actuals[1]) ? 1 : 0;
 
 	for (int i = 2; i < arity; ++i)
-		*result = (actuals[i] != *result) ? 1 : 0;
+		r = (actuals[i] != r) ? 1 : 0;
 
+	*result = r;
 	return 0;
 }
 
@@ -837,6 +838,7 @@ static const eei_rule_item eei_parser_infix_rules[] =
 	//Function call
 	HANDLE(MAKE_DELIMITED_INFIX_RULE(MAKE_TOKEN(eei_token_delimiter,'('), eei_precedence_function), eei_rule_handler_function),
 
+	//Normal operators
 	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,token_symbol_op_or), eei_precedence_logical_or), eei_rule_handler_infix),
 	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,token_symbol_op_xor), eei_precedence_logical_or), eei_rule_handler_infix),
 	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,token_symbol_op_and), eei_precedence_logical_and), eei_rule_handler_infix),
