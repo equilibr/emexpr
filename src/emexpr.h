@@ -232,6 +232,10 @@ typedef enum
 
 	//An empty group (enclosed in parens) was specified
 	ee_parser_expression_empty_group,
+
+	//An group (enclosed in parens) with too many elements was specified
+	ee_parser_expression_overfull_group,
+
 } ee_parser_reply;
 
 //Status returned by the evaluator

@@ -176,7 +176,8 @@ const char * parser_status_string(ee_parser_reply reply)
 		"rouge end",
 		"not constants",
 		"not identifier",
-		"empty group"
+		"empty group",
+		"over. group"
 	};
 
 	return strings[reply];
@@ -288,6 +289,12 @@ int main()
 	test_expression("1 - (-1)");
 	test_expression("1 - (-1--1)");
 
+	test_expression("&2");
+	test_expression("&(2)");
+	test_expression("&(2,3)");
+	test_expression("&(2,0,3)");
+	test_expression("2&3");
+
 	test_expression("1");
 	test_expression("(1)");
 	test_expression("((1))");
@@ -301,6 +308,13 @@ int main()
 	test_expression("1 + 1 = 2");
 	test_expression("2 > 1");
 	test_expression("1 < -1");
+
+	test_expression("-1");
+	test_expression("-(1)");
+	test_expression("-(1,0)");
+
+	//Refuse wrong arity
+	test_expression("-(1,0,1)");
 
 	//Mark empty expression during parsing!
 	test_expression("");
