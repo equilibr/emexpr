@@ -250,14 +250,10 @@ int test_expression(const char * expression)
 int main()
 {
 	test_print_header();
-//	test_expression("(1,2)");
-//	test_expression("arity(1,2)");
-//	return 0;
 
 	test_expression("1 m");
 	test_expression("1 M * 1 m");
 	test_expression("2 + 1 M * 1 m");
-//	return 0;
 
 	test_expression("pi()");
 	test_expression("pi");
@@ -277,8 +273,6 @@ int main()
 	var1 = 10;
 	test_expression("a");
 	test_expression("a * 2");
-//	return 0;
-
 
 	test_expression("2 * 2");
 	test_expression("2 * -2");
@@ -296,8 +290,12 @@ int main()
 
 	test_expression("1");
 	test_expression("(1)");
-
 	test_expression("((1))");
+
+	test_expression("0.1");
+	test_expression("1.23");
+	test_expression("0.2 - 1/5");
+	test_expression("1/5 + 0.8");
 
 	//Mark empty expression during parsing!
 	test_expression("");

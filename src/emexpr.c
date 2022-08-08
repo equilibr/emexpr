@@ -48,7 +48,21 @@
 
 const ee_char_type * eei_constant_scanner(const ee_char_type * start)
 {
-	//A naive base-10 integer scanner
+	//A naive base-10 scanner
+
+	while ( (*start >= '0') && (*start <= '9') )
+		++start;
+
+	//Look for fractional part
+	if (*start != '.')
+		return start;
+
+	//Make sure a number follows the decimal dot
+	if ( (*(start+1) < '0') || (*(start+1) > '9') )
+		return start;
+
+	//Skip the decimal
+	++start;
 
 	while ( (*start >= '0') && (*start <= '9') )
 		++start;
@@ -58,16 +72,29 @@ const ee_char_type * eei_constant_scanner(const ee_char_type * start)
 
 int eei_constant_parser(const ee_char_type * start, const ee_char_type * end, ee_variable_type * result)
 {
-	//A naive base-10 integer parser
+	//A naive base-10 parser
 
-	*result = 0;
+	ee_variable_type integer = 0;
+	ee_variable_type fractional = 0;
 
 	while (start < end)
 	{
-		*result *= 10;
-		*result += *start - '0';
+		if (*start == '.')
+			break;
+
+		integer *= 10;
+		integer += *start - '0';
 		start++;
 	}
+
+	if (*start == '.')
+		while (start < --end)
+		{
+			fractional += *end - '0';
+			fractional /= 10;
+		}
+
+	*result = integer + fractional;
 
 	return 0;
 }
@@ -149,7 +176,7 @@ static ee_compilation_data_function eei_operators_function[] =
 	{0,0}
 };
 
-const char * eei_operators_names[] = {"-","-","+","*","=",">","<"};
+const char * eei_operators_names[] = {"-","-","+","*","/","=",">","<"};
 
 static const ee_compilation_data_functions eei_operators_library =
 {
@@ -1243,6 +1270,7 @@ static inline ee_parser_reply eei_parse_pushGroupRule(
 int eei_parse_symbols_init_count_functions(const ee_compilation_data_functions * functions)
 {
 	int count = 0;
+
 	if (functions->meta.names && functions->data)
 	{
 			const ee_char_type * const * names = functions->meta.names;
