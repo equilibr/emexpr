@@ -308,6 +308,7 @@ int main()
 	test_expression("1 + 1 != 2");
 	test_expression("2 > 1");
 	test_expression("-1 >= 1");
+	test_expression("!=(1,2)");
 
 	test_expression("-1");
 	test_expression("-(1)");

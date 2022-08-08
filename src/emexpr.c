@@ -802,12 +802,7 @@ static const eei_rule_item eei_parser_prefix_rules[] =
 	//Grouping parens
 	HANDLE(MAKE_DELIMITED_PREFIX_RULE(MAKE_TOKEN(eei_token_delimiter,'(')), eei_rule_handler_group),
 
-	HANDLE(MAKE_DELAYED_PREFIX_RULE(MAKE_TOKEN(eei_token_operator,'!')), eei_rule_handler_prefix),
-	HANDLE(MAKE_DELAYED_PREFIX_RULE(MAKE_TOKEN(eei_token_operator,'~')), eei_rule_handler_prefix),
-	HANDLE(MAKE_DELAYED_PREFIX_RULE(MAKE_TOKEN(eei_token_operator,'&')), eei_rule_handler_prefix),
-	HANDLE(MAKE_DELAYED_PREFIX_RULE(MAKE_TOKEN(eei_token_operator,'|')), eei_rule_handler_prefix),
-	HANDLE(MAKE_DELAYED_PREFIX_RULE(MAKE_TOKEN(eei_token_operator,'+')), eei_rule_handler_prefix),
-	HANDLE(MAKE_DELAYED_PREFIX_RULE(MAKE_TOKEN(eei_token_operator,'-')), eei_rule_handler_prefix),
+	HANDLE(MAKE_DELAYED_PREFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_operator)), eei_rule_handler_prefix),
 
 	STATE(MAKE_SENTINEL_RULE())
 };
