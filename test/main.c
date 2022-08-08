@@ -304,10 +304,10 @@ int main()
 	test_expression("0.2 - 1/5");
 	test_expression("1/5 + 0.8");
 
-	test_expression("2 = 1 + 1");
-	test_expression("1 + 1 = 2");
+	test_expression("2 == 1 + 1");
+	test_expression("1 + 1 != 2");
 	test_expression("2 > 1");
-	test_expression("1 < -1");
+	test_expression("-1 >= 1");
 
 	test_expression("-1");
 	test_expression("-(1)");

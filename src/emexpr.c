@@ -168,6 +168,27 @@ int eei_operator_less(ee_element_count arity, const ee_variable_type * actuals, 
 	return 0;
 }
 
+int eei_operator_notequal(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
+{
+	(void)arity;
+	*result = (actuals[0] != actuals[1]) ? 1 : 0;
+	return 0;
+}
+
+int eei_operator_greaterequal(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
+{
+	(void)arity;
+	*result = (actuals[0] >= actuals[1]) ? 1 : 0;
+	return 0;
+}
+
+int eei_operator_lessequal(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
+{
+	(void)arity;
+	*result = (actuals[0] <= actuals[1]) ? 1 : 0;
+	return 0;
+}
+
 #if EEI_ALLOW_PREFIX_OPERATOR_FUNCTIONS
 
 int eei_operator_fold_and(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
@@ -204,6 +225,9 @@ static ee_compilation_data_function eei_operators_function[] =
 	{eei_operator_equal,2},
 	{eei_operator_greater,2},
 	{eei_operator_less,2},
+	{eei_operator_notequal,2},
+	{eei_operator_greaterequal,2},
+	{eei_operator_lessequal,2},
 #	if EEI_ALLOW_PREFIX_OPERATOR_FUNCTIONS
 	{eei_operator_fold_and,-2},
 	{eei_operator_fold_or,-2},
@@ -213,7 +237,7 @@ static ee_compilation_data_function eei_operators_function[] =
 
 const char * eei_operators_names[] =
 {
-	"-","-","+","*","/","=",">","<",
+	"-","-","+","*","/","=",">","<","!=",">=","<=",
 #	if EEI_ALLOW_PREFIX_OPERATOR_FUNCTIONS
 	"&","|"
 #	endif
@@ -273,7 +297,17 @@ typedef unsigned short int eei_token;
 enum
 {
 	//Denote a wildcard (any) possible symbol
-	token_symbol_any = 0
+	token_symbol_any = 0,
+
+	//This is a _hack_ to represent known double-character operators using a single character.
+	//We can do this becase we know it is impossible for an operator to actually be one of the symbols used below.
+	//Moreover, no function can also never consist(nor even start) from those symbols. Thus we make sure there will
+	//	never be name clashes between theese synthetic token symbols and actual symbols that might be used for
+	//	operators/functions.
+	token_symbol_op_eq = '0',
+	token_symbol_op_neq = '1',
+	token_symbol_op_gte = '2',
+	token_symbol_op_lte = '3',
 };
 
 //Field sizes and offsets of the various parts for the token
@@ -364,6 +398,21 @@ static inline int eei_lexer_is_operator(const ee_char_type c)
 			|| (c == '=') ||(c == '>') || (c == '<');
 }
 
+static inline ee_char_type eei_lexer_create_double_character_operator(const ee_char_type first, const ee_char_type second)
+{
+	if (second != '=')
+		return token_symbol_any;
+
+	switch (first)
+	{
+		case '=': return token_symbol_op_eq;
+		case '!': return token_symbol_op_neq;
+		case '>': return token_symbol_op_gte;
+		case '<': return token_symbol_op_lte;
+	}
+	return token_symbol_any;
+}
+
 int eei_lexer_consume_digits(eei_lexer_state * state)
 {
 	enum { decimal_base = 10 };
@@ -432,9 +481,22 @@ eei_token eei_lexer_next_token(eei_lexer_state * state)
 
 	if (eei_lexer_is_operator(*state->head))
 	{
-		//Only single-character operators are currently supported
+		const ee_char_type op =
+				eei_lexer_create_double_character_operator(
+					*state->head,
+					*(state->head+1));
+
 		state->head++;
-		return MAKE_TOKEN(eei_token_operator, *state->start);
+
+		if (op != token_symbol_any)
+		{
+			//If this is a known double-character operator it consumes another char
+			state->head++;
+
+			return MAKE_TOKEN(eei_token_operator, op);
+		}
+		else
+			return MAKE_TOKEN(eei_token_operator, *state->start);
 	}
 
 	return MAKE_SIMPLE_TOKEN(eei_token_error);
@@ -760,9 +822,12 @@ static const eei_rule_item eei_parser_infix_rules[] =
 
 	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'|'), eei_precedence_logical_or), eei_rule_handler_infix),
 	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'&'), eei_precedence_logical_and), eei_rule_handler_infix),
-	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'='), eei_precedence_compare), eei_rule_handler_infix),
 	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'<'), eei_precedence_compare), eei_rule_handler_infix),
 	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'>'), eei_precedence_compare), eei_rule_handler_infix),
+	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,token_symbol_op_eq), eei_precedence_compare), eei_rule_handler_infix),
+	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,token_symbol_op_neq), eei_precedence_compare), eei_rule_handler_infix),
+	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,token_symbol_op_gte), eei_precedence_compare), eei_rule_handler_infix),
+	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,token_symbol_op_lte), eei_precedence_compare), eei_rule_handler_infix),
 	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'+'), eei_precedence_power1), eei_rule_handler_infix),
 	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'-'), eei_precedence_power1), eei_rule_handler_infix),
 	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'*'), eei_precedence_power2), eei_rule_handler_infix),
