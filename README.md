@@ -498,7 +498,7 @@ For users who want to *just use* the library a function is provided that takes a
     double myVar = 0;
     double result = eelib_execute("cos(2 * PI * phi)", "phi", &myVar);
 ```
-For developers who wish to per-process symbol tables that are known at compile time the appropriate facilities are provided as separate tools in their own source file.
+For developers who wish to pre-process symbol tables that are known at compile time the appropriate facilities are provided as separate tools in their own source file.
 
 ## Future
 

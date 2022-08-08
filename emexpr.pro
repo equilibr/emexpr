@@ -8,8 +8,11 @@ QMAKE_CFLAGS += -Wall -Wextra
 QMAKE_CFLAGS += -pedantic-errors
 
 SOURCES += \
+	src/eelib/errors.c \
 	src/emexpr.c \
 	test/main.c
 
 HEADERS += \
+	src/eelib/emexpr.h \
+	src/eelib/errors.h \
 	src/emexpr.h

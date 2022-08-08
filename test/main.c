@@ -2,6 +2,7 @@
 #include <string.h>
 
 #include "src/emexpr.h"
+#include "src/eelib/errors.h"
 
 //Globally allocated data pools
 enum { pool_bytes = 10240 };
@@ -150,54 +151,6 @@ void test_print_location(const char * expression, const ee_compilation_header * 
 		printf("START");
 }
 
-const char * parser_status_string(ee_parser_reply reply)
-{
-	static const char * strings[] =
-	{
-		"ok",
-		"stored",
-		"empty",
-		"error",
-		"stack error",
-		"stack underflow",
-		"memory",
-		"stack overflow",
-		"ins. overflow",
-		"const. overflow",
-		"var. overflow",
-		"func. overflow",
-		"unknown var",
-		"dup. varfunc",
-		"no func.",
-		"wrong arity",
-		"no prefix",
-		"no infix",
-		"no postfix",
-		"expression",
-		"rouge end",
-		"not constants",
-		"not identifier",
-		"empty group",
-		"over. group",
-		"null assign"
-	};
-
-	return strings[reply];
-}
-
-const char * eval_status_string(ee_evaluator_reply reply)
-{
-	static const char * strings[] =
-	{
-		"ok",
-		"empty",
-		"stack ext.",
-		"stack und.",
-	};
-
-	return strings[reply];
-}
-
 int test_expression(const char * expression)
 {
 	ee_parser_reply reply;
@@ -220,7 +173,7 @@ int test_expression(const char * expression)
 	if (reply >= ee_parser_error)
 	{
 		printf("%8s ", " ");
-		printf("%16s %10s ",parser_status_string(reply)," ");
+		printf("%16s %10s ",eelib_compile_status_string_short(reply)," ");
 		test_print_sizes(&sizes);
 		test_print_sizes(&sizes_delta);
 		test_print_location(expression, &global_parser.header);
@@ -237,7 +190,7 @@ int test_expression(const char * expression)
 	if (reply || ereply)
 	{
 		printf("%8s ", " ");
-		printf("%16s %10s ",parser_status_string(reply), eval_status_string(ereply));
+		printf("%16s %10s ",eelib_compile_status_string_short(reply), eelib_evaluate_status_string_short(ereply));
 		test_print_sizes(&sizes);
 		test_print_sizes(&sizes_delta);
 		printf("\n");
@@ -246,7 +199,7 @@ int test_expression(const char * expression)
 	else
 	{
 			printf("%8g ", result);
-			printf("%16s %10s ",parser_status_string(reply), eval_status_string(ereply));
+			printf("%16s %10s ",eelib_compile_status_string_short(reply), eelib_evaluate_status_string_short(ereply));
 			test_print_sizes(&sizes);
 			test_print_sizes(&sizes_delta);
 			printf("\n");
