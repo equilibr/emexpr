@@ -82,6 +82,7 @@ const ee_char_type * eei_constant_scanner(const ee_char_type * start)
 int eei_constant_parser(const ee_char_type * start, const ee_char_type * end, ee_variable_type * result)
 {
 	//A naive base-10 parser
+	enum {numeric_base = 10};
 
 	ee_variable_type integer = 0;
 	ee_variable_type fractional = 0;
@@ -91,7 +92,7 @@ int eei_constant_parser(const ee_char_type * start, const ee_char_type * end, ee
 		if (*start == '.')
 			break;
 
-		integer *= 10;
+		integer *= numeric_base;
 		integer += *start - '0';
 		start++;
 	}
@@ -100,7 +101,7 @@ int eei_constant_parser(const ee_char_type * start, const ee_char_type * end, ee
 		while (start < --end)
 		{
 			fractional += *end - '0';
-			fractional /= 10;
+			fractional /= numeric_base;
 		}
 
 	*result = integer + fractional;
@@ -529,8 +530,8 @@ eei_token eei_lexer_next_token(eei_lexer_state * state)
 
 			return MAKE_TOKEN(eei_token_operator, op);
 		}
-		else
-			return MAKE_TOKEN(eei_token_operator, *state->start);
+
+		return MAKE_TOKEN(eei_token_operator, *state->start);
 	}
 
 	return MAKE_SIMPLE_TOKEN(eei_token_error);
@@ -2209,10 +2210,11 @@ ee_parser_reply eei_rule_handler_group(eei_parser * parser, const eei_parser_nod
 
 	if (items == 1)
 		return ee_parser_ok;
-	else if (items == 0)
+
+	if (items == 0)
 		return ee_parser_expression_empty_group;
-	else
-		return ee_parser_expression_overfull_group;
+
+	return ee_parser_expression_overfull_group;
 }
 
 ee_parser_reply eei_rule_handler_prefix(eei_parser * parser, const eei_parser_node * node)
@@ -2509,10 +2511,11 @@ ee_evaluator_reply eei_vm_execute(const eei_vm_environment * vm_environment)
 
 	if (stack == 0)
 		return ee_evaluator_empty;
-	else if (stack > 1)
+
+	if (stack > 1)
 		return ee_evaluator_stack_extra;
-	else
-		return ee_evaluator_ok;
+
+	return ee_evaluator_ok;
 }
 
 

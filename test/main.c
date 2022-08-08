@@ -211,7 +211,7 @@ int test_expression(const char * expression)
 
 	printf("%20s = ",expression);
 
-	reply = ee_guestimate(expression, &sizes);
+	ee_guestimate(expression, &sizes);
 	memcpy(&sizes_guess, &sizes, sizeof(ee_data_size));
 
 	reply = ee_compile(expression, &sizes, &global_parser.header, &global_environment.header, &global_compilation_data);
