@@ -1598,6 +1598,14 @@ static inline ee_parser_reply eei_parse_pushGroupRule(
 //Parser symbol table handling
 //----------------------------
 
+typedef enum
+{
+	ee_function_location_prefix,
+	ee_function_location_infix,
+	ee_function_location_postfix,
+	ee_function_location_any
+} ee_function_location;
+
 int eei_parse_symbols_init_count_functions(const ee_compilation_data_functions * functions)
 {
 	int count = 0;
@@ -1790,10 +1798,13 @@ ee_function eei_parse_symbols_get_function_single(
 
 ee_function eei_parse_symbols_get_function(
 		eei_parser * parser,
+		ee_function_location location,
 		ee_arity arity,
 		const eei_parser_node * node,
 		int * wrong_arity)
 {
+	(void)location;
+
 	const ee_char_type * token_start = &parser->expression[node->text.start];
 	const ee_char_type * token_end = &parser->expression[node->text.end];
 
@@ -2184,7 +2195,7 @@ ee_parser_reply eei_rule_handler_variable(eei_parser * parser, const eei_parser_
 	ee_variable_type * var = eei_parse_symbols_get_variable(parser, node);
 
 	//Look for a zero-arity function with the same name
-	ee_function op = eei_parse_symbols_get_function(parser, 0, node, NULL);
+	ee_function op = eei_parse_symbols_get_function(parser, ee_function_location_any, 0, node, NULL);
 
 	if (var && op)
 		//We do not allow both to be defined to avoid confusion
@@ -2219,7 +2230,7 @@ ee_parser_reply eei_rule_handler_group(eei_parser * parser, const eei_parser_nod
 
 ee_parser_reply eei_rule_handler_prefix(eei_parser * parser, const eei_parser_node * node)
 {
-	ee_function op = eei_parse_symbols_get_function(parser, 1, node, NULL);
+	ee_function op = eei_parse_symbols_get_function(parser, ee_function_location_prefix, 1, node, NULL);
 
 	if (!op)
 		return ee_parser_prefix_not_implemented;
@@ -2229,7 +2240,7 @@ ee_parser_reply eei_rule_handler_prefix(eei_parser * parser, const eei_parser_no
 
 ee_parser_reply eei_rule_handler_infix(eei_parser * parser, const eei_parser_node * node)
 {
-	ee_function op = eei_parse_symbols_get_function(parser, 2, node, NULL);
+	ee_function op = eei_parse_symbols_get_function(parser, ee_function_location_infix, 2, node, NULL);
 
 	if (!op)
 		return ee_parser_infix_not_implemented;
@@ -2239,7 +2250,7 @@ ee_parser_reply eei_rule_handler_infix(eei_parser * parser, const eei_parser_nod
 
 ee_parser_reply eei_rule_handler_postfix(eei_parser * parser, const eei_parser_node * node)
 {
-	ee_function op = eei_parse_symbols_get_function(parser, 1, node, NULL);
+	ee_function op = eei_parse_symbols_get_function(parser, ee_function_location_postfix, 1, node, NULL);
 
 	if (!op)
 		return ee_parser_postfix_not_implemented;
@@ -2274,7 +2285,7 @@ ee_parser_reply eei_rule_handler_function(eei_parser * parser, const eei_parser_
 
 	const ee_arity arity = (ee_arity)(parser->vm.current.stack - identifier.stack_top);
 	int wrong_arity = 0;
-	ee_function op = eei_parse_symbols_get_function(parser, arity, &identifier, &wrong_arity);
+	ee_function op = eei_parse_symbols_get_function(parser, ee_function_location_infix, arity, &identifier, &wrong_arity);
 
 	if (!op)
 		return eei_parse_set_error(
