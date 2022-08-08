@@ -1629,20 +1629,20 @@ ee_function eei_parse_symbols_get_function(
 	const ee_char_type * token_start = &parser->expression[node->text.start];
 	const ee_char_type * token_end = &parser->expression[node->text.end];
 
-	//Search inside the library
-	ee_function library =
+	//Search the user function first, since they should take precedence over the library
+	ee_function user =
 			eei_parse_symbols_get_function_single
 			(
 				token_start,
 				token_end,
-				parser->symboltable.library,
-				parser->symboltable.library_functions,
+				&parser->symboltable.foreign->functions,
+				parser->symboltable.functions,
 				arity,
 				wrong_arity
 			);
 
-	if (library)
-		return library;
+	if (user)
+		return user;
 
 	//Not found in the library, search in the foreign table
 	return
@@ -1650,8 +1650,8 @@ ee_function eei_parse_symbols_get_function(
 			(
 				token_start,
 				token_end,
-				&parser->symboltable.foreign->functions,
-				parser->symboltable.functions,
+				parser->symboltable.library,
+				parser->symboltable.library_functions,
 				arity,
 				wrong_arity
 			);
