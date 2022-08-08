@@ -189,8 +189,6 @@ int eei_operator_lessequal(ee_element_count arity, const ee_variable_type * actu
 	return 0;
 }
 
-#if EEI_ALLOW_PREFIX_OPERATOR_FUNCTIONS
-
 int eei_operator_fold_and(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
 {
 	*result = (actuals[0] != 0) ? 1 : 0;
@@ -213,7 +211,15 @@ int eei_operator_fold_or(ee_element_count arity, const ee_variable_type * actual
 	return 0;
 }
 
-#endif
+int eei_operator_fold_xor(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
+{
+	*result = (actuals[0] != actuals[1]) ? 1 : 0;
+
+	for (int i = 2; i < arity; ++i)
+		*result = (actuals[i] != *result) ? 1 : 0;
+
+	return 0;
+}
 
 static ee_compilation_data_function eei_operators_function[] =
 {
@@ -222,25 +228,25 @@ static ee_compilation_data_function eei_operators_function[] =
 	{eei_operator_plus,2},
 	{eei_operator_mul,2},
 	{eei_operator_div,2},
+
 	{eei_operator_equal,2},
 	{eei_operator_greater,2},
 	{eei_operator_less,2},
 	{eei_operator_notequal,2},
 	{eei_operator_greaterequal,2},
 	{eei_operator_lessequal,2},
-#	if EEI_ALLOW_PREFIX_OPERATOR_FUNCTIONS
+
 	{eei_operator_fold_and,-2},
 	{eei_operator_fold_or,-2},
-#	endif
+	{eei_operator_fold_xor,-3},
 	{0,0}
 };
 
 const char * eei_operators_names[] =
 {
-	"-","-","+","*","/","=",">","<","!=",">=","<=",
-#	if EEI_ALLOW_PREFIX_OPERATOR_FUNCTIONS
-	"&","|"
-#	endif
+	"-","-","+","*","/",
+	"==",">","<","!=",">=","<=",
+	"&&","||","^^"
 };
 
 static const ee_compilation_data_functions eei_operators_library =
@@ -308,6 +314,9 @@ enum
 	token_symbol_op_neq = '1',
 	token_symbol_op_gte = '2',
 	token_symbol_op_lte = '3',
+	token_symbol_op_or = '4',
+	token_symbol_op_and = '5',
+	token_symbol_op_xor = '6',
 };
 
 //Field sizes and offsets of the various parts for the token
@@ -400,16 +409,28 @@ static inline int eei_lexer_is_operator(const ee_char_type c)
 
 static inline ee_char_type eei_lexer_create_double_character_operator(const ee_char_type first, const ee_char_type second)
 {
-	if (second != '=')
+	if (second == '=')
+	{
+		switch (first)
+		{
+			case '=': return token_symbol_op_eq;
+			case '!': return token_symbol_op_neq;
+			case '>': return token_symbol_op_gte;
+			case '<': return token_symbol_op_lte;
+		}
+		return token_symbol_any;
+	}
+
+	if (first != second)
 		return token_symbol_any;
 
 	switch (first)
 	{
-		case '=': return token_symbol_op_eq;
-		case '!': return token_symbol_op_neq;
-		case '>': return token_symbol_op_gte;
-		case '<': return token_symbol_op_lte;
+		case '|': return token_symbol_op_or;
+		case '&': return token_symbol_op_and;
+		case '^': return token_symbol_op_xor;
 	}
+
 	return token_symbol_any;
 }
 
@@ -802,6 +823,7 @@ static const eei_rule_item eei_parser_prefix_rules[] =
 	//Grouping parens
 	HANDLE(MAKE_DELIMITED_PREFIX_RULE(MAKE_TOKEN(eei_token_delimiter,'(')), eei_rule_handler_group),
 
+	//Catch-all for all operators
 	HANDLE(MAKE_DELAYED_PREFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_operator)), eei_rule_handler_prefix),
 
 	STATE(MAKE_SENTINEL_RULE())
@@ -815,8 +837,9 @@ static const eei_rule_item eei_parser_infix_rules[] =
 	//Function call
 	HANDLE(MAKE_DELIMITED_INFIX_RULE(MAKE_TOKEN(eei_token_delimiter,'('), eei_precedence_function), eei_rule_handler_function),
 
-	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'|'), eei_precedence_logical_or), eei_rule_handler_infix),
-	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'&'), eei_precedence_logical_and), eei_rule_handler_infix),
+	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,token_symbol_op_or), eei_precedence_logical_or), eei_rule_handler_infix),
+	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,token_symbol_op_xor), eei_precedence_logical_or), eei_rule_handler_infix),
+	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,token_symbol_op_and), eei_precedence_logical_and), eei_rule_handler_infix),
 	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'<'), eei_precedence_compare), eei_rule_handler_infix),
 	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'>'), eei_precedence_compare), eei_rule_handler_infix),
 	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,token_symbol_op_eq), eei_precedence_compare), eei_rule_handler_infix),
@@ -825,7 +848,9 @@ static const eei_rule_item eei_parser_infix_rules[] =
 	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,token_symbol_op_lte), eei_precedence_compare), eei_rule_handler_infix),
 	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'+'), eei_precedence_power1), eei_rule_handler_infix),
 	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'-'), eei_precedence_power1), eei_rule_handler_infix),
+	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'|'), eei_precedence_power1), eei_rule_handler_infix),
 	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'*'), eei_precedence_power2), eei_rule_handler_infix),
+	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'&'), eei_precedence_power2), eei_rule_handler_infix),
 	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'/'), eei_precedence_power2), eei_rule_handler_infix),
 	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'%'), eei_precedence_power2), eei_rule_handler_infix),
 	HANDLE(MAKE_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'^'), eei_precedence_power3, eei_rule_right, 0), eei_rule_handler_infix),
@@ -1583,7 +1608,7 @@ static inline int eei_parse_symbols_compare_node(
 		if (*cmp++ != *ptr++)
 			return 0;
 
-	return *cmp == '\0';
+	return (*cmp == '\0') && (ptr == token_end);
 }
 
 static inline int eei_parse_symbols_get_name(

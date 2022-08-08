@@ -289,11 +289,9 @@ int main()
 	test_expression("1 - (-1)");
 	test_expression("1 - (-1--1)");
 
-	test_expression("&2");
-	test_expression("&(2)");
-	test_expression("&(2,3)");
-	test_expression("&(2,0,3)");
-	test_expression("2&3");
+	test_expression("^^(0,1)");
+	test_expression("^^(0,0,1)");
+	test_expression("^^(0,1,1)");
 
 	test_expression("1");
 	test_expression("(1)");
@@ -316,6 +314,12 @@ int main()
 
 	//Refuse wrong arity
 	test_expression("-(1,0,1)");
+	test_expression("&&()");
+
+	//Refuse no function
+	test_expression("&2");
+	test_expression("&(2)");
+	test_expression("2&3");
 
 	//Mark empty expression during parsing!
 	test_expression("");
