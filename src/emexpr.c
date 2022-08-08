@@ -222,6 +222,13 @@ int eei_operator_fold_xor(ee_element_count arity, const ee_variable_type * actua
 	return 0;
 }
 
+int eei_operator_not(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
+{
+	(void)arity;
+	*result = (actuals[0] == 0) ? 1 : 0;
+	return 0;
+}
+
 static ee_compilation_data_function eei_operators_function[] =
 {
 	{eei_operator_subneg,1},
@@ -240,6 +247,7 @@ static ee_compilation_data_function eei_operators_function[] =
 	{eei_operator_fold_and,-2},
 	{eei_operator_fold_or,-2},
 	{eei_operator_fold_xor,-3},
+	{eei_operator_not,1},
 	{0,0}
 };
 
@@ -247,7 +255,7 @@ const char * eei_operators_names[] =
 {
 	"-","-","+","*","/",
 	"==",">","<","!=",">=","<=",
-	"&&","||","^^"
+	"&&","||","^^","!"
 };
 
 static const ee_compilation_data_functions eei_operators_library =

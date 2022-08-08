@@ -293,6 +293,7 @@ int main()
 	test_expression("^^(0,0,1)");
 	test_expression("^^(0,1,1)");
 
+	test_expression("!1");
 	test_expression("1");
 	test_expression("(1)");
 	test_expression("((1))");
