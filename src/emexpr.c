@@ -1611,25 +1611,36 @@ ee_symboltable_reply eei_symboltable_find_text(
 
 		//A matching length is found, see if the textbook also matches
 
-		//Make sure the comparison will not read past the end of the textbook
-		if (length > 1)
+		if (length == 2)
 		{
-			if ((st->second.book.indexes[index2] + (length-1)) > st->used.textbook)
-				//Something really horrible happened here
-				return ee_symboltable_out_of_bounds;
+			//At length of 2 the second symbol is stored inside the *INDEX*
+			if (st->second.book.indexes[index2] != start[0])
+				//Textbook mismatch
+				continue;
 		}
+		else if (length > 2)
+		{
+			//Only look inside the textbook when the data is actually stored there
 
-		const ee_char_type * textbook =
-				&st->second.textbook[ st->second.book.indexes[index2] ];
+			const int adjusted_length = length - 1;
 
-		int i = 0;
-		for (; i < (length-1); ++i)
-			if (textbook[i] != start[i])
-				break;
+			//Make sure the comparison will not read past the end of the textbook
+			if ((st->second.book.indexes[index2] + adjusted_length) > st->used.textbook)
+				//This should never happen, but it did...
+				return ee_symboltable_out_of_bounds;
 
-		if (i != (length-1))
-			//Textbook mismatch
-			continue;
+			const ee_char_type * textbook =
+					&st->second.textbook[ st->second.book.indexes[index2] ];
+
+			int i = 0;
+			for (; i < adjusted_length; ++i)
+				if (textbook[i] != start[i])
+					break;
+
+			if (i != adjusted_length)
+				//Textbook mismatch
+				continue;
+		}
 
 		//This is it!
 		index->second = index2;
@@ -1769,21 +1780,160 @@ ee_symboltable_reply eei_symboltable_get_function(
 //Symbol table building
 //---------------------
 
+ee_symboltable_reply eei_symboltable_add_text(
+		eei_symboltable * st,
+		const ee_char_type * start,
+		ee_element_count length,
+		eei_symboltable_index * index)
+{
+	//Add the text into the textbook and fill the data according to the index
+	//The appropriate elements at level 2 must already be allocated
+
+	if (length == 1)
+	{
+		//This is a trivial case when nothing is stored in the textbook
+		st->second.book.counts[index->second] = 1;
+		st->second.book.indexes[index->second] = 0;
+		return ee_symboltable_ok;
+	}
+
+	if (length == 2)
+	{
+		//A length of 2 is handled specially
+		//The second symbol is stored inside the *INDEX* element thus avoiding the need
+		//	to actually use the textbook itself.
+		//This allows for all symbols of length 2 not to take any space in the textbook.
+		//Currently this includes, at least, all recognised operators.
+		st->second.book.counts[index->second] = 2;
+		st->second.book.indexes[index->second] = start[1];
+		return ee_symboltable_ok;
+	}
+
+	//This is a long symbol and it should reside inside the textbook.
+	//If the symbol already exists in the textbook we should reuse that data.
+	//If the symbols' prefix exists at the textbooks' end we should resuse what we can
+	//	and extend the textbook to include the rest.
+	//Otherwise the symbol is just appended to the end of the textbook.
+
+	//The following algorithm is a naive O(n^2) scan.
+	//Given the symbol table is usually appended only once in the lifetime of the program
+	//	simplicity if preferred over performance.
+
+	//Advance to the next symbol to simplify all following code
+	start++;
+	length--;
+
+	//Make sure we can always perform a full comparison. The left-over will be handled separately.
+	int stop_index = st->used.textbook - length + 1;
+	int start_index;
+	int matched = 0;
+
+	for (start_index = 0; !matched && (start_index < stop_index); ++start_index)
+	{
+		int i = 0;
+		for (; i < length; ++i)
+			if (st->second.textbook[start_index + i] != start[i])
+				break;
+
+		matched = i == length;
+	}
+
+	if (matched)
+	{
+		//The symbol exists in the textbook in it's entirety, so nothing more needs to be done
+		st->second.book.counts[index->second] = length + 1;
+		st->second.book.indexes[index->second] = start_index;
+		return ee_symboltable_ok;
+	}
+
+	//We need to search for the symbols' prefix inside the textbooks' suffix.
+	stop_index = st->used.textbook;
+
+	for (; !matched && (start_index < stop_index); ++start_index)
+	{
+		const int prefix = stop_index - start_index;
+
+		int i = 0;
+		for (; i < prefix; ++i)
+			if (st->second.textbook[start_index + i] != start[i])
+				break;
+
+		matched = i == prefix;
+	}
+
+	//At this point start_index is is the best possible match, even if it's past the textbooks' end
+	//Calculate how much data we need to append to the textbook
+	const int leftover = length - (stop_index - start_index);
+
+	//Get more space
+	st->used.textbook += leftover;
+
+	if (st->used.textbook > st->allocated->textbook)
+	{
+		//Return the used space so that any following calculation would remain correct
+		st->used.textbook -= leftover;
+
+		//We're out of free space!
+		return ee_symboltable_memory;
+	}
+
+	//Copy the data to the textbook.
+	//We simply copy all of the text to avoid doing funky calculations for edge cases that would
+	//	not really save us much processing.
+	for (int i = 0; i < length; ++i)
+		st->second.textbook[start_index + i] = start[i];
+
+	st->second.book.counts[index->second] = length + 1;
+	st->second.book.indexes[index->second] = start_index;
+	return ee_symboltable_ok;
+}
+
+
 ee_symboltable_reply eei_symboltable_add_variable(
 		eei_symboltable * st,
 		const ee_char_type * start,
 		const ee_element_count length,
 		ee_variable_type * item)
  {
-	 //First we try to find if a varaible with the same name already exists.
-//	 int index = eei_symboltable_find_text(st, start, length);
+	 eei_symboltable_index index;
+	 ee_symboltable_reply reply;
 
+	 //First we try to find if a varaible with the same name already exists.
+	 eei_symboltable_find_text(st, start, length, &index);
+	 reply = eei_symboltable_get_variable(st, &index);
 
 	 //If so the existing value will simply be re-bound to the new variable.
+	 if (reply == ee_symboltable_ok)
+	 {
+		 st->third.variables[index.data] = item;
+		 return ee_symboltable_ok;
+	 }
 
  }
 
+ee_symboltable_reply eei_symboltable_add_function(
+		eei_symboltable * st,
+		const ee_char_type * start,
+		const ee_element_count length,
+		ee_function item,
+		ee_arity arity,
+		ee_function_flags flags)
+ {
+	 eei_symboltable_index index;
+	 ee_symboltable_reply reply;
 
+	 //First we try to find if a function with the same name, arity and flags already exists.
+	 eei_symboltable_find_text(st, start, length, &index);
+	 reply = eei_symboltable_get_function(st, &index, arity, 0, flags, 0);
+
+	 //If so the existing function will simply be overwritten with the new one.
+	 if (reply == ee_symboltable_ok)
+	 {
+		 st->third.functions[index.data] = item;
+		 return ee_symboltable_ok;
+	 }
+
+ }
 
 
 
