@@ -1435,6 +1435,29 @@ enum
 
 typedef ee_element_count eei_symboltable_element_count;
 
+typedef struct
+{
+	//The elements are defined here in the order they appear
+	//	inside the symbol table memory, not in the order of usage by the code.
+	//Depending on the usage theese are offset, in bytes, or sizes, in elements.
+
+	//This has the following arrays, all of the same size, in order:
+	// second.book.indexes, second.book.counts, second.next.indexes, second.next.counts
+	ee_memory_size second_level;
+
+	//third.data
+	ee_memory_size third_level;
+
+	//third.variables
+	ee_memory_size variables;
+
+	//third.functions
+	ee_memory_size functions;
+
+	//second.textbook
+	ee_memory_size textbook;
+} eei_symboltable_usage_data;
+
 //Holds basic data about a function
 typedef struct
 {
@@ -1462,16 +1485,12 @@ typedef struct
 
 typedef struct
 {
-	//Count of elements at this level
-	eei_symboltable_element_count count;
-
 	//Index into the textbook where each second-level element starts, from the second symbol.
 	//Lengths of each element, including the first symbol.
 	//For elements with total length of zero the index must be zero
 	eei_symboltable_level book;
 
 	//The textbook holding texts, from the second symbol forward
-	eei_symboltable_element_count textbook_count;
 	ee_char_type * textbook;
 
 	//Index into the third-level table where function flag/arity combinations for this element start.
@@ -1481,10 +1500,6 @@ typedef struct
 
 typedef struct
 {
-	//Count of elements at this level
-	//This is also the combined count of all function variations and variables stored in total.
-	eei_symboltable_element_count count;
-
 	//The arity/flag combinations for a samely-named function.
 	//A flag of ee_function_flag_invalid denotes a variable.
 	eei_symboltable_function_data * data;
@@ -1493,11 +1508,9 @@ typedef struct
 	//	is the index into the appropriate arrays where the actual data pointers are stored
 
 	//The bound variables
-	eei_symboltable_element_count variables_count;
 	ee_variable * variables;
 
 	//The user-functions
-	eei_symboltable_element_count functions_count;
 	ee_function * functions;
 } eei_symboltable_third_level;
 
@@ -1506,6 +1519,12 @@ typedef struct
 {
 	//This does not stores the actual data, only pointers to it,
 	//	since this is all that is needed to search through the symbol table.
+
+	//Amount of data actually allocated in memory
+	eei_symboltable_usage_data * allocated;
+
+	//Count of elements actually used
+	eei_symboltable_usage_data used;
 
 	//The first level is the first symbol only of each element
 	//The indexes point into the second level
@@ -1521,10 +1540,37 @@ typedef struct
 } eei_symboltable;
 
 
-int eei_symboltable_find_text(
+//Symbol table lookup
+//-------------------
+
+typedef struct
+{
+	int first;
+	int second;
+	int third;
+	int data;
+} eei_symboltable_index;
+
+void eei_symboltable_invalidate_index(eei_symboltable_index * index, int level)
+{
+	if (level <= 1)
+		index->first = -1;
+
+	if (level <= 2)
+		index->second = -1;
+
+	if (level <= 3)
+		index->third = -1;
+
+	if (level <= 4)
+		index->data = -1;
+}
+
+ee_symboltable_reply eei_symboltable_find_text(
 		const eei_symboltable * st,
 		const ee_char_type * start,
-		ee_element_count length)
+		const ee_element_count length,
+		eei_symboltable_index * index)
 {
 	//Finds the text given by (start, length) inside the symbol table.
 	//Returns the index into st->second.next since it holds both
@@ -1535,13 +1581,17 @@ int eei_symboltable_find_text(
 	//We assume length is always > 0 and that
 	//	the text to search is valid (non-zero) for it's entire length.
 
+	eei_symboltable_invalidate_index(index, 0);
+
 	//Select first level index based on the first symbol
 	const int index1 = *start - eei_symboltable_first_symbol;
 
 	//If there is no second level data for this symbol...
 	if (st->first.next.counts[index1] == 0)
 		//...there is nothing more to be done
-		return -1;
+		return ee_symboltable_no_name;
+
+	index->first = index1;
 
 	//Advance to the next symbol to simplify all following code
 	start++;
@@ -1564,44 +1614,47 @@ int eei_symboltable_find_text(
 		//Make sure the comparison will not read past the end of the textbook
 		if (length > 1)
 		{
-			if ((st->second.book.indexes[index2] + (length-1)) > st->second.textbook_count)
+			if ((st->second.book.indexes[index2] + (length-1)) > st->used.textbook)
 				//Something really horrible happened here
-				return -3;
+				return ee_symboltable_out_of_bounds;
 		}
 
 		const ee_char_type * textbook =
 				&st->second.textbook[ st->second.book.indexes[index2] ];
 
-		int index = 0;
-		for (; index < (length-1); ++index)
-			if (textbook[index] != start[index])
+		int i = 0;
+		for (; i < (length-1); ++i)
+			if (textbook[i] != start[i])
 				break;
 
-		if (index != (length-1))
+		if (i != (length-1))
 			//Textbook mismatch
 			continue;
 
 		//This is it!
-		return index2;
+		index->second = index2;
+		return ee_symboltable_ok;
 	}
 
 	//No match was found, return failure
-	return -2;
+	return ee_symboltable_no_name;
 }
 
-ee_variable_type * eei_symboltable_get_variable(
+ee_symboltable_reply eei_symboltable_get_variable(
 		const eei_symboltable * st,
-		int index)
+		eei_symboltable_index * index)
 {
 	//Returns a pointer to a variable given an index returned by eei_symboltable_find_text
 
+	eei_symboltable_invalidate_index(index, 3);
+
 	//Early break when nothing was found
-	if (index < 0)
-		return NULL;
+	if (index->second < 0)
+		return ee_symboltable_no_name;
 
 	//Make sure a variable actually exists at that index in the third level
-	int index3 = st->second.next.indexes[index];
-	int index3_stop = index3 + st->second.next.counts[index];
+	int index3 = st->second.next.indexes[index->second];
+	int index3_stop = index3 + st->second.next.counts[index->second];
 
 	for (; index3 < index3_stop; ++index3)
 		if (st->third.data[index3].flags == ee_function_flag_invalid)
@@ -1609,7 +1662,9 @@ ee_variable_type * eei_symboltable_get_variable(
 
 	if (index3 == index3_stop)
 		//There is no variable at this index
-		return NULL;
+		return ee_symboltable_no_type;
+
+	index->third = index3;
 
 	//Find the index into the final vector
 	int accumulator = 0;
@@ -1619,16 +1674,17 @@ ee_variable_type * eei_symboltable_get_variable(
 				? 1
 				: 0;
 
-	if (accumulator >= st->third.variables_count)
+	if (accumulator >= st->used.variables)
 		//Something went terribly wrong!
-		return NULL;
+		return ee_symboltable_out_of_bounds;
 
-	return st->third.variables[accumulator];
+	index->data = accumulator;
+	return ee_symboltable_ok;
 }
 
-ee_function eei_symboltable_get_function(
+ee_symboltable_reply eei_symboltable_get_function(
 		const eei_symboltable * st,
-		int index,
+		eei_symboltable_index * index,
 		ee_arity arity,
 		ee_function_flags any_flags,
 		ee_function_flags all_flags,
@@ -1637,16 +1693,22 @@ ee_function eei_symboltable_get_function(
 	//Returns a pointer to a function given an index returned by eei_symboltable_find_text
 	//This takes into account the requested arity and all flag masks
 
+	eei_symboltable_invalidate_index(index, 3);
+
 	//Early break when nothing was found
-	if (index < 0)
-		return NULL;
+	if (index->second < 0)
+		return ee_symboltable_no_name;
 
 	//Find the matching function at that index in the third level
-	int index3 = st->second.next.indexes[index];
-	int index3_stop = index3 + st->second.next.counts[index];
+	int index3 = st->second.next.indexes[index->second];
+	int index3_stop = index3 + st->second.next.counts[index->second];
+
+	int seen_function = 0;
 
 	for (; index3 < index3_stop; ++index3)
 	{
+		seen_function |= st->third.data[index3].flags != ee_function_flag_invalid;
+
 		//If set, at least one of any_flags must be present
 		if (any_flags && ((st->third.data[index3].flags & any_flags) == 0))
 			continue;
@@ -1684,7 +1746,9 @@ ee_function eei_symboltable_get_function(
 
 	if (index3 == index3_stop)
 		//There is no matching function at this index
-		return NULL;
+		return seen_function ? ee_symboltable_filtered : ee_symboltable_no_type;
+
+	index->third = index3;
 
 	//Find the index into the final vector
 	int accumulator = 0;
@@ -1694,12 +1758,33 @@ ee_function eei_symboltable_get_function(
 				? 1
 				: 0;
 
-	if (accumulator >= st->third.functions_count)
+	if (accumulator >= st->used.functions)
 		//Something went terribly wrong!
-		return NULL;
+		return ee_symboltable_out_of_bounds;
 
-	return st->third.functions[accumulator];
+	index->data = accumulator;
+	return ee_symboltable_ok;
 }
+
+//Symbol table building
+//---------------------
+
+ee_symboltable_reply eei_symboltable_add_variable(
+		eei_symboltable * st,
+		const ee_char_type * start,
+		const ee_element_count length,
+		ee_variable_type * item)
+ {
+	 //First we try to find if a varaible with the same name already exists.
+//	 int index = eei_symboltable_find_text(st, start, length);
+
+
+	 //If so the existing value will simply be re-bound to the new variable.
+
+ }
+
+
+
 
 
 //Parser
@@ -1853,6 +1938,26 @@ static inline ee_parser_reply eei_parse_pushGroupRule(
 //Parser symbol table helper functions
 //------------------------------------
 
+static inline ee_variable_type * eei_parse_symbols_get_variable_from_index(
+		const eei_parser * parser,
+		const eei_symboltable_index * index)
+{
+	if (index->data >= 0)
+		return parser->symboltable.third.variables[index->data];
+	else
+		return NULL;
+}
+
+static inline ee_function eei_parse_symbols_get_function_from_index(
+		const eei_parser * parser,
+		const eei_symboltable_index * index)
+{
+	if (index->data >= 0)
+		return parser->symboltable.third.functions[index->data];
+	else
+		return NULL;
+}
+
 ee_variable_type * eei_parse_symbols_get_variable(
 		eei_parser * parser,
 		const eei_parser_node * node)
@@ -1862,13 +1967,16 @@ ee_variable_type * eei_parse_symbols_get_variable(
 	const ee_char_type * token_start = &parser->expression[node->text.start];
 	const ee_element_count token_length = node->text.end - node->text.start;
 
-	const int index =
-			eei_symboltable_find_text(
+	eei_symboltable_index index;
+
+	eei_symboltable_find_text(
 				&parser->symboltable,
 				token_start,
-				token_length);
+				token_length,
+				&index);
 
-	return eei_symboltable_get_variable(&parser->symboltable, index);
+	eei_symboltable_get_variable(&parser->symboltable, &index);
+	return eei_parse_symbols_get_variable_from_index(parser, &index);
 }
 
 ee_function eei_parse_symbols_get_function(
@@ -1885,25 +1993,35 @@ ee_function eei_parse_symbols_get_function(
 	const ee_char_type * token_start = &parser->expression[node->text.start];
 	const ee_element_count token_length = node->text.end - node->text.start;
 
-	const int index =
-			eei_symboltable_find_text(
+	eei_symboltable_index index;
+
+	eei_symboltable_find_text(
 				&parser->symboltable,
 				token_start,
-				token_length);
+				token_length,
+				&index);
 
-	ee_function function =
+	const ee_symboltable_reply reply =
 			eei_symboltable_get_function(
 				&parser->symboltable,
-				index,
+				&index,
 				arity,
 				any_flags,
 				all_flags,
 				not_flags);
 
-	if (wrong_arity)
-		*wrong_arity = (function == NULL) && (index >= 0);
+	if (reply == ee_symboltable_ok)
+	{
+		if (wrong_arity)
+			*wrong_arity = 0;
 
-	return function;
+		return eei_parse_symbols_get_function_from_index(parser, &index);
+	}
+
+	if (wrong_arity)
+		*wrong_arity = reply == ee_symboltable_filtered;
+
+	return NULL;
 }
 
 //Parser core functions
@@ -2265,27 +2383,27 @@ ee_parser_reply eei_rule_handler_variable(eei_parser * parser, const eei_parser_
 	const ee_char_type * token_start = &parser->expression[node->text.start];
 	const ee_element_count token_length = node->text.end - node->text.start;
 
-	const int index =
-			eei_symboltable_find_text(
+	eei_symboltable_index index;
+
+	eei_symboltable_find_text(
 				&parser->symboltable,
 				token_start,
-				token_length);
+				token_length,
+				&index);
 
 	//Look for the variable
-	ee_variable_type * var =
-			eei_symboltable_get_variable(
-				&parser->symboltable,
-				index);
+	eei_symboltable_get_variable(&parser->symboltable, &index);
+	ee_variable_type * var = eei_parse_symbols_get_variable_from_index(parser, &index);
 
 	//Look for a zero-arity function with the same name
-	ee_function op =
-			eei_symboltable_get_function(
+	eei_symboltable_get_function(
 				&parser->symboltable,
-				index,
+				&index,
 				0,
 				0,
 				ee_function_flag_prefix,
 				0);
+	ee_function op = eei_parse_symbols_get_function_from_index(parser, &index);
 
 	if (var && op)
 		//We do not allow both to be defined to avoid confusion
@@ -2664,28 +2782,6 @@ ee_evaluator_reply eei_vm_execute(const eei_vm_environment * vm_environment)
 //External API semi-opaque structures
 //-----------------------------------
 
-typedef struct
-{
-	//The elements are defined here in the order they appear
-	//	inside the symbol table memory, not in the order of usage by the code.
-	//Depending on the usage theese are offset, in bytes, or sizes, in elements.
-
-	//This has the following arrays, all of the same size, in order:
-	// second.book.indexes, second.book.counts, second.next.indexes, second.next.counts
-	ee_memory_size second_level;
-
-	//third.data
-	ee_memory_size third_level;
-
-	//third.variables
-	ee_memory_size variables;
-
-	//third.functions
-	ee_memory_size functions;
-
-	//second.textbook
-	ee_memory_size textbook;
-} eei_symboltable_data;
 
 
 //Internal direct data held inside a symbol table data structure
@@ -2694,10 +2790,13 @@ typedef struct
 	ee_symboltable_header header;
 
 	//Byte offsets from "data" for the various tables
-	eei_symboltable_data offsets;
+	eei_symboltable_usage_data offsets;
 
-	//Element counts for each of the items in 'offsets'
-	eei_symboltable_data counts;
+	//Allocated element counts for each of the items in 'offsets'
+	eei_symboltable_usage_data counts;
+
+	//Used element counts for each of the items in 'offsets'
+	eei_symboltable_usage_data used;
 
 	//This data is defined directly here since its size is constant
 	eei_symboltable_element_count first_level_indexes[eei_symboltable_total_symbols];
@@ -2770,21 +2869,92 @@ void eei_guestimate_calculate_sizes(ee_data_size * size)
 //Symbol table API utility
 //------------------------
 
+void eei_symboltable_copy_usagedata(
+		eei_symboltable_usage_data * dst,
+		const eei_symboltable_usage_data * src)
+{
+	dst->second_level = src->second_level;
+	dst->third_level = src->third_level;
+	dst->variables = src->variables;
+	dst->functions = src->functions;
+	dst->textbook = src->textbook;
+}
+
 char * eei_symboltable_calculate_offsets(
-		eei_symboltable_data * offsets,
-		char * base,
-		const eei_symboltable_data * size)
+		eei_symboltable_usage_data * offsets,
+		eei_symboltable_struct * full,
+		const eei_symboltable_usage_data * size)
 {
 	//Calculate the memory locations of all tables
 
+	char * base = &full->data[0];
+	char * ptr = base;
+
+	//Second level data - realign
+	if (alignof(eei_symboltable_element_count))
+		while ((ptrdiff_t)ptr % alignof(eei_symboltable_element_count))
+			ptr++;
+
+	offsets->second_level = (ee_memory_size)(ptr - base);
+	ptr += sizeof(eei_symboltable_element_count) * size->second_level * 4;
+
+	//Third level data
+	while ((ptrdiff_t)ptr % alignof(eei_symboltable_function_data))
+		ptr++;
+
+	offsets->third_level = (ee_memory_size)(ptr - base);
+	ptr += sizeof(eei_symboltable_function_data) * size->third_level;
+
+	//Variables
+	while ((ptrdiff_t)ptr % alignof(ee_variable))
+		ptr++;
+
+	offsets->variables = (ee_memory_size)(ptr - base);
+	ptr += sizeof(ee_variable) * size->variables;
+
+	//Functions
+	while ((ptrdiff_t)ptr % alignof(ee_function))
+		ptr++;
+
+	offsets->functions = (ee_memory_size)(ptr - base);
+	ptr += sizeof(ee_function) * size->functions;
+
+	//Textbook
+	while ((ptrdiff_t)ptr % alignof(ee_char_type))
+		ptr++;
+
+	offsets->textbook = (ee_memory_size)(ptr - base);
+	ptr += sizeof(ee_char_type) * size->textbook;
+
+	return ptr;
 }
 
 void eei_symboltable_calculate_pointers(
 		eei_symboltable * pointers,
-		const eei_symboltable_struct * full)
+		eei_symboltable_struct * full)
 {
 	//Fill working pointers from the data
 
+	//First level is filled directly
+	pointers->first.next.indexes = full->first_level_indexes;
+	pointers->first.next.counts = full->first_level_counts;
+
+	//Fill all counts first
+	pointers->allocated = &full->counts;
+	eei_symboltable_copy_usagedata(&pointers->used, &full->used);
+
+	char * base = &full->data[0];
+
+	//Second level is daisy chained
+	pointers->second.book.indexes = (eei_symboltable_element_count*)(base + full->offsets.second_level);
+	pointers->second.book.counts = pointers->second.book.indexes + pointers->allocated->second_level;
+	pointers->second.next.indexes = pointers->second.book.counts + pointers->allocated->second_level;
+	pointers->second.next.counts = pointers->second.next.indexes + pointers->allocated->second_level;
+
+	pointers->third.data = (eei_symboltable_function_data*)(base + full->offsets.third_level);
+	pointers->third.variables = (ee_variable*)(base + full->offsets.variables);
+	pointers->third.functions = (ee_function*)(base + full->offsets.functions);
+	pointers->second.textbook = (ee_char_type*)(base + full->offsets.textbook);
 }
 
 //Environment API utility
@@ -2889,9 +3059,15 @@ ee_symboltable_reply ee_symboltable_add(
 		const ee_symboltable_functions functions,
 		const ee_symboltable_variables variables)
 {
-	if (symboltable->size == 0)
+	eei_symboltable_struct * full_symboltable = (eei_symboltable_struct *)symboltable;
+
+	//Calculate requiered memory for the functions and variables
+
+	if (symboltable->size <= sizeof(ee_symboltable_header))
 	{
 		//This is a request for a size estimate
+
+		return ee_symboltable_ok;
 	}
 
 }
@@ -2978,7 +3154,7 @@ ee_parser_reply ee_compile(
 
 	eei_environment_struct * full_env = (eei_environment_struct *)environment;
 	eei_compilation_struct * full_compilation = (eei_compilation_struct *)compilation;
-	const eei_symboltable_struct * full_symboltable = (const eei_symboltable_struct *)symboltable;
+	eei_symboltable_struct * full_symboltable = (eei_symboltable_struct *)symboltable;
 
 	char * ptr = &full_compilation->data[0];
 	if (alignof(eei_parser_node))

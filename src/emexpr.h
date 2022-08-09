@@ -162,7 +162,22 @@ typedef enum
 	ee_symboltable_ok,
 
 	//Not enough memory
-	ee_symboltable_memory
+	ee_symboltable_memory,
+
+	//An index is outside the allocated count
+	ee_symboltable_out_of_memory,
+
+	//An index is outside the used count
+	ee_symboltable_out_of_bounds,
+
+	//The requested name was not found
+	ee_symboltable_no_name,
+
+	//The requested type was not found
+	ee_symboltable_no_type,
+
+	//All possible candidates were filtered out
+	ee_symboltable_filtered
 
 } ee_symboltable_reply;
 
