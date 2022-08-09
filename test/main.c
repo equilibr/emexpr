@@ -9,6 +9,12 @@ enum { pool_bytes = 10240 };
 
 union
 {
+	ee_symboltable_header header;
+	char data[pool_bytes];
+} global_symboltable;
+
+union
+{
 	ee_compilation_header header;
 	char data[pool_bytes];
 } global_parser;
@@ -68,35 +74,24 @@ int acuum(ee_element_count arity, const ee_variable_type * actuals, ee_variable 
 
 //Global handling functions
 
-ee_compilation_data_function funcData[] = {
-	{mega,1},
-	{milli,1},
-	{pi, 0},
-	{unity,1},
-	{arity,-1},
-	{acuum, -1},
-	{0,0}
+static const ee_symboltable_function funcData[] =
+{
+	{mega,"M",1,ee_function_flag_postfix | ee_function_flag_pure},
+	{milli,"m",1, ee_function_flag_postfix | ee_function_flag_pure},
+	{pi, "pi",0,ee_function_flag_prefix | ee_function_flag_static},
+	{unity,"unity",1,ee_function_flag_infix | ee_function_flag_pure},
+	{arity,"arity",-1,ee_function_flag_infix | ee_function_flag_pure},
+	{acuum, "acuum",-1,ee_function_flag_infix | ee_function_flag_pure},
+	{0,0,0,0}
 };
-
-const char * funcNames[] = {"M","m","pi","unity","arity","acuum"};
 
 ee_variable_type var1, var2;
 
-ee_variable const varData[] = {&var1, &var2, 0};
-const char * varNames[] = {"a","b"};
-
-ee_compilation_data global_compilation_data =
+static const ee_symboltable_variable varData[] =
 {
-	.variables =
-	{
-		varData,
-		{varNames, 0}
-	},
-	.functions =
-	{
-		funcData,
-		{funcNames, 0}
-	}
+	{&var1, "a"},
+	{&var2, "b"},
+	{0,0}
 };
 
 void test_print_header()
@@ -153,21 +148,25 @@ void test_print_location(const char * expression, const ee_compilation_header * 
 
 int test_expression(const char * expression)
 {
-	ee_parser_reply reply;
-
 	ee_data_size sizes;
 	ee_data_size sizes_guess;
 	ee_data_size sizes_delta;
 
+	memset(&global_symboltable.header, 0, sizeof(ee_symboltable_header));
 	memset(&global_parser.header, 0, sizeof(ee_compilation_header));
 	memset(&global_environment.header, 0, sizeof(ee_environment_header));
 
+	global_symboltable.header.size = sizeof(global_symboltable);
+
 	printf("%20s = ",expression);
+
+	ee_symboltable_add(&global_symboltable.header,funcData, varData);
+	ee_symboltable_add(&global_symboltable.header,NULL,NULL);
 
 	ee_guestimate(expression, &sizes);
 	memcpy(&sizes_guess, &sizes, sizeof(ee_data_size));
 
-	reply = ee_compile(expression, &sizes, &global_parser.header, &global_environment.header, &global_compilation_data);
+	ee_parser_reply reply = ee_compile(expression, &sizes, &global_symboltable.header, &global_parser.header, &global_environment.header);
 	test_diff_sizes(&sizes_delta, &sizes_guess, &sizes);
 
 	if (reply >= ee_parser_error)

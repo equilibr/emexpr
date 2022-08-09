@@ -234,39 +234,26 @@ int eei_operator_not(ee_element_count arity, const ee_variable_type * actuals, e
 	return 0;
 }
 
-static ee_compilation_data_function eei_operators_function[] =
+static const ee_symboltable_function eei_operators_library[] =
 {
-	{eei_operator_subneg,1},
-	{eei_operator_subneg,2},
-	{eei_operator_plus,2},
-	{eei_operator_mul,2},
-	{eei_operator_div,2},
+	{eei_operator_subneg,"-",1,ee_function_flag_prefix | ee_function_flag_pure},
+	{eei_operator_subneg,"-",2,ee_function_flag_infix | ee_function_flag_pure},
+	{eei_operator_plus,"+",2,ee_function_flag_infix | ee_function_flag_pure},
+	{eei_operator_mul,"*",2,ee_function_flag_infix | ee_function_flag_pure},
+	{eei_operator_div,"/",2,ee_function_flag_infix | ee_function_flag_pure},
 
-	{eei_operator_equal,2},
-	{eei_operator_greater,2},
-	{eei_operator_less,2},
-	{eei_operator_notequal,2},
-	{eei_operator_greaterequal,2},
-	{eei_operator_lessequal,2},
+	{eei_operator_equal,"==",2,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
+	{eei_operator_greater,">",2,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
+	{eei_operator_less,"<",2,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
+	{eei_operator_notequal,"!=",2,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
+	{eei_operator_greaterequal,">=",2,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
+	{eei_operator_lessequal,"<=",2,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
 
-	{eei_operator_fold_and,-2},
-	{eei_operator_fold_or,-2},
-	{eei_operator_fold_xor,-3},
-	{eei_operator_not,1},
-	{0,0}
-};
-
-const char * eei_operators_names[] =
-{
-	"-","-","+","*","/",
-	"==",">","<","!=",">=","<=",
-	"&&","||","^^","!"
-};
-
-static const ee_compilation_data_functions eei_operators_library =
-{
-	eei_operators_function,
-	{eei_operators_names, 0}
+	{eei_operator_fold_and,"&&",-2,ee_function_flag_prefix | ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
+	{eei_operator_fold_or,"||",-2,ee_function_flag_prefix | ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
+	{eei_operator_fold_xor,"^^",-3,ee_function_flag_prefix | ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
+	{eei_operator_not,"!",1, ee_function_flag_prefix | ee_function_flag_operator | ee_function_flag_pure},
+	{0,0,0,0}
 };
 
 #endif
@@ -1434,6 +1421,285 @@ ee_parser_reply eei_vmmake_store_variable(
 	return eei_vmmake_append_instruction(vm, eei_vm_insturction_store, index);
 }
 
+
+//Symbol table
+//------------
+
+//We handle only printable characters in the lower ASCII region
+enum
+{
+	eei_symboltable_first_symbol = '!',
+	eei_symboltable_last_symbol = '~',
+	eei_symboltable_total_symbols = eei_symboltable_last_symbol - eei_symboltable_first_symbol + 1
+};
+
+//Holds basic data about a function
+typedef struct
+{
+	ee_function_flags flags;
+	ee_arity arity;
+} eei_symboltable_function_data;
+
+typedef struct
+{
+	//Start index in the next-level table for this element
+	ee_element_count * indexes;
+
+	//Counts of next-level elements at each index for this element
+	ee_element_count * counts;
+} eei_symboltable_level;
+
+typedef struct
+{
+	//The count of elements at this level is exactly eei_symboltable_total_symbols
+
+	//Indexes into the second-level search tables based on the first symbol
+	//Counts of elements in the second-level search table for each first symbol
+	eei_symboltable_level next;
+} eei_symboltable_first_level;
+
+typedef struct
+{
+	//Count of elements at this level
+	ee_element_count count;
+
+	//Index into the textbook where each second-level element starts, from the second symbol.
+	//Lengths of each element, including the first symbol.
+	//For elements with total length of zero the index must be zero
+	eei_symboltable_level book;
+
+	//The textbook holding texts, from the second symbol forward
+	ee_element_count textbook_count;
+	ee_char_type * textbook;
+
+	//Index into the third-level table where function flag/arity combinations for this element start.
+	//Count of combinations.
+	eei_symboltable_level next;
+} eei_symboltable_second_level;
+
+typedef struct
+{
+	//Count of elements at this level
+	//This is also the combined count of all function variations and variables stored in total.
+	ee_element_count count;
+
+	//The arity/flag combinations for a samely-named function.
+	//A flag of ee_function_flag_invalid denotes a variable.
+	eei_symboltable_function_data * data;
+
+	//For each element, the count of function/variable datums before it
+	//	is the index into the appropriate arrays where the actual data pointers are stored
+
+	//The bound variables
+	ee_element_count variables_count;
+	ee_variable * variables;
+
+	//The user-functions
+	ee_element_count functions_count;
+	ee_function * functions;
+} eei_symboltable_third_level;
+
+
+typedef struct
+{
+	//This does not stores the actual data, only pointers to it,
+	//	since this is all that is needed to search through the symbol table.
+
+	//The first level is the first symbol only of each element
+	//The indexes point into the second level
+	eei_symboltable_first_level first;
+
+	//Second level data is used for comparing the elements(from the second symbol) with
+	//	the data stored in the textbook.
+	//The indexes point into the third level
+	eei_symboltable_second_level second;
+
+	//Third level data is used for finding the requested items.
+	eei_symboltable_third_level third;
+} eei_symboltable;
+
+
+int eei_symboltable_find_text(
+		const eei_symboltable * st,
+		const ee_char_type * start,
+		ee_element_count length)
+{
+	//Finds the text given by (start, length) inside the symbol table.
+	//Returns the index into st->second.next since it holds both
+	//	the index into the third level where this items starts as well as the
+	//	count of relevant third-level items.
+	//Will retrun <0 on failure
+
+	//We assume length is always > 0 and that
+	//	the text to search is valid (non-zero) for it's entire length.
+
+	//Select first level index based on the first symbol
+	const int index1 = *start - eei_symboltable_first_symbol;
+
+	//If there is no second level data for this symbol...
+	if (st->first.next.counts[index1] == 0)
+		//...there is nothing more to be done
+		return -1;
+
+	//Advance to the next symbol to simplify all following code
+	start++;
+
+	//The starting index
+	int index2 = st->first.next.indexes[index1];
+
+	//The stopping index
+	int index2_stop = index2 + st->first.next.counts[index1];
+
+	for (; index2 < index2_stop; ++index2)
+	{
+		//If the text lenghts don't match...
+		if (st->second.book.counts[index2] != length)
+			//...no use in further testing
+			continue;
+
+		//A matching length is found, see if the textbook also matches
+
+		//Make sure the comparison will not read past the end of the textbook
+		if (length > 1)
+		{
+			if ((st->second.book.indexes[index2] + (length-1)) > st->second.textbook_count)
+				//Something really horrible happened here
+				return -3;
+		}
+
+		const ee_char_type * textbook =
+				&st->second.textbook[ st->second.book.indexes[index2] ];
+
+		int index = 0;
+		for (; index < (length-1); ++index)
+			if (textbook[index] != start[index])
+				break;
+
+		if (index != (length-1))
+			//Textbook mismatch
+			continue;
+
+		//This is it!
+		return index2;
+	}
+
+	//No match was found, return failure
+	return -2;
+}
+
+ee_variable_type * eei_symboltable_get_variable(
+		const eei_symboltable * st,
+		int index)
+{
+	//Returns a pointer to a variable given an index returned by eei_symboltable_find_text
+
+	//Early break when nothing was found
+	if (index < 0)
+		return NULL;
+
+	//Make sure a variable actually exists at that index in the third level
+	int index3 = st->second.next.indexes[index];
+	int index3_stop = index3 + st->second.next.counts[index];
+
+	for (; index3 < index3_stop; ++index3)
+		if (st->third.data[index3].flags == ee_function_flag_invalid)
+			break;
+
+	if (index3 == index3_stop)
+		//There is no variable at this index
+		return NULL;
+
+	//Find the index into the final vector
+	int accumulator = 0;
+	for (int i = 0; i < index3; ++i)
+		accumulator +=
+				(st->third.data[i].flags == ee_function_flag_invalid)
+				? 1
+				: 0;
+
+	if (accumulator >= st->third.variables_count)
+		//Something went terribly wrong!
+		return NULL;
+
+	return st->third.variables[accumulator];
+}
+
+ee_function eei_symboltable_get_function(
+		const eei_symboltable * st,
+		int index,
+		ee_arity arity,
+		ee_function_flags any_flags,
+		ee_function_flags all_flags,
+		ee_function_flags not_flags)
+{
+	//Returns a pointer to a function given an index returned by eei_symboltable_find_text
+	//This takes into account the requested arity and all flag masks
+
+	//Early break when nothing was found
+	if (index < 0)
+		return NULL;
+
+	//Find the matching function at that index in the third level
+	int index3 = st->second.next.indexes[index];
+	int index3_stop = index3 + st->second.next.counts[index];
+
+	for (; index3 < index3_stop; ++index3)
+	{
+		//If set, at least one of any_flags must be present
+		if (any_flags && ((st->third.data[index3].flags & any_flags) == 0))
+			continue;
+
+		//If set, all of all_flags must be present
+		if (all_flags && ((st->third.data[index3].flags & all_flags) != all_flags))
+			continue;
+
+		//If set, none from not_flags must be present
+		if (not_flags && ((st->third.data[index3].flags & not_flags) != 0))
+			continue;
+
+		//Test for correct arity
+		ee_arity found_arity = st->third.data[index3].arity;
+
+		if (found_arity >= 0)
+		{
+			//This is regular function that must get an exact number of parameters
+			if (found_arity != arity)
+				continue;
+		}
+		else
+		{
+			//We're looking at a variadic function
+			//Calculate the number of mandatory parameters
+			found_arity = (ee_arity)(-(found_arity + 1));
+
+			if (found_arity > arity)
+				continue;
+		}
+
+		//All tests passed - we found what we're looking for!
+		break;
+	}
+
+	if (index3 == index3_stop)
+		//There is no matching function at this index
+		return NULL;
+
+	//Find the index into the final vector
+	int accumulator = 0;
+	for (int i = 0; i < index3; ++i)
+		accumulator +=
+				(st->third.data[i].flags != ee_function_flag_invalid)
+				? 1
+				: 0;
+
+	if (accumulator >= st->third.functions_count)
+		//Something went terribly wrong!
+		return NULL;
+
+	return st->third.functions[accumulator];
+}
+
+
 //Parser
 //------
 
@@ -1443,25 +1709,11 @@ typedef struct
 	eei_text_location text;
 } eei_parser_token;
 
-typedef struct
-{
-	//The externally supplied data
-	const ee_compilation_data * foreign;
-
-	//Counts
-	int variables;
-	int functions;
-
-	//Library data
-	const ee_compilation_data_functions * library;
-	int library_functions;
-} eei_parser_symboltable;
-
 struct eei_parser_
 {
 	eei_parser_stack stack;
 	eei_vmmake_environment vm;
-	eei_parser_symboltable symboltable;
+	eei_symboltable symboltable;
 
 	const ee_char_type * expression;
 	ee_element_count expression_size;
@@ -1473,6 +1725,10 @@ struct eei_parser_
 	//This points to the actual rule and not the synthetic group rule
 	int currentGroup;
 };
+
+
+//Parser utility functions
+//------------------------
 
 ee_parser_reply eei_parse_set_error(
 		eei_parser * parser,
@@ -1487,9 +1743,6 @@ ee_parser_reply eei_parse_set_error(
 
 	return error;
 }
-
-//Parser utility functions
-//------------------------
 
 ee_parser_reply eei_parse_error(
 		eei_parser * parser,
@@ -1595,245 +1848,60 @@ static inline ee_parser_reply eei_parse_pushGroupRule(
 	return eei_parse_error(parser, eei_stack_push(&parser->stack, &node), token);
 }
 
-//Parser symbol table handling
-//----------------------------
-
-typedef enum
-{
-	ee_function_location_prefix,
-	ee_function_location_infix,
-	ee_function_location_postfix,
-	ee_function_location_any
-} ee_function_location;
-
-int eei_parse_symbols_init_count_functions(const ee_compilation_data_functions * functions)
-{
-	int count = 0;
-
-	if (functions->meta.names && functions->data)
-	{
-			const ee_char_type * const * names = functions->meta.names;
-			ee_compilation_data_function * values = functions->data;
-
-			if (functions->meta.count == 0)
-				//No actual limit
-				while (*names && values->function)
-				{
-					count++;
-					names++;
-					values++;
-				}
-			else
-				while (*names && values->function && (count < functions->meta.count))
-				{
-					count++;
-					names++;
-					values++;
-				}
-	}
-
-	return count;
-}
-
-ee_parser_reply eei_parse_symbols_init(
-		eei_parser * parser,
-		const ee_compilation_data *data)
-{
-	parser->symboltable.foreign = data;
-	parser->symboltable.library = &EEI_FUNCTION_LIBRARY;
-
-	//This is the naive implementation that will just perform a linear search
-	//	over all available symbol.
-	//For that to work we need to count them all.
-
-	parser->symboltable.variables = 0;
-	if (data->variables.meta.names && data->variables.data)
-	{
-			const ee_char_type * const * names = data->variables.meta.names;
-			ee_variable const * values = data->variables.data;
-
-			if (data->variables.meta.count == 0)
-				//No actual limit
-				while (*names && *values)
-				{
-					parser->symboltable.variables++;
-					names++;
-					values++;
-				}
-			else
-				while (*names && *values && (parser->symboltable.variables < data->variables.meta.count))
-				{
-					parser->symboltable.variables++;
-					names++;
-					values++;
-				}
-	}
-
-	parser->symboltable.functions = eei_parse_symbols_init_count_functions(&data->functions);
-	parser->symboltable.library_functions = eei_parse_symbols_init_count_functions(parser->symboltable.library);
-
-	return ee_parser_ok;
-}
-
-static inline int eei_parse_symbols_compare_node(
-		const ee_char_type * name,
-		const ee_char_type * token_start,
-		const ee_char_type * token_end)
-{
-	//Compare token text with a name
-	//Return false is not equal
-
-	const char * ptr = token_start;
-	const ee_char_type * cmp = name;
-
-	while (*cmp && (ptr != token_end))
-		if (*cmp++ != *ptr++)
-			return 0;
-
-	return (*cmp == '\0') && (ptr == token_end);
-}
-
-static inline int eei_parse_symbols_get_name(
-		const ee_char_type * const * names,
-		int start_index,
-		int end_index,
-		const ee_char_type * token_start,
-		const ee_char_type * token_end)
-{
-	//Returns the index of the nodes' token inside the names
-
-	for (int i = start_index; i < end_index; ++i)
-		if (eei_parse_symbols_compare_node(names[i], token_start, token_end))
-			return i;
-
-	return end_index;
-}
+//Parser symbol table helper functions
+//------------------------------------
 
 ee_variable_type * eei_parse_symbols_get_variable(
 		eei_parser * parser,
 		const eei_parser_node * node)
 {
 	//Returns the variable pointed to by the node, or NULL on error.
+
 	const ee_char_type * token_start = &parser->expression[node->text.start];
-	const ee_char_type * token_end = &parser->expression[node->text.end];
+	const ee_element_count token_length = node->text.end - node->text.start;
 
-	int index =
-			eei_parse_symbols_get_name(
-				parser->symboltable.foreign->variables.meta.names,
-				0,
-				parser->symboltable.variables,
+	const int index =
+			eei_symboltable_find_text(
+				&parser->symboltable,
 				token_start,
-				token_end);
+				token_length);
 
-	if (index < parser->symboltable.variables)
-		return parser->symboltable.foreign->variables.data[index];
-
-	return NULL;
-}
-
-ee_function eei_parse_symbols_get_function_single(
-		const ee_char_type * token_start,
-		const ee_char_type * token_end,
-		const ee_compilation_data_functions * functions,
-		int functions_count,
-		ee_arity arity,
-		int * wrong_arity)
-{
-	//Returns the function pointed to by the node, with a compatible arity, or NULL on error.
-
-	int seen = 0;
-	int index = 0;
-
-	while (index < functions_count)
-	{
-		index =
-				eei_parse_symbols_get_name(
-					functions->meta.names,
-					index,
-					functions_count,
-					token_start,
-					token_end);
-
-		if (index < functions_count)
-		{
-			seen = 1;
-
-			//Test for correct arity
-			ee_arity found_arity = functions->data[index].arity;
-
-			if (found_arity >= 0)
-			{
-				//This is regular function that must get an exact number of parameters
-				if (found_arity != arity)
-				{
-					index++;
-					continue;
-				}
-			}
-			else
-			{
-				//We're looking at a variadic function
-				//Calculate the number of mandatory parameters
-				found_arity = (ee_arity)(-(found_arity + 1));
-
-				if (found_arity > arity)
-				{
-					index++;
-					continue;
-				}
-			}
-
-			//We found it!
-			return functions->data[index].function;
-		}
-
-		index++;
-	}
-
-	if (wrong_arity)
-		*wrong_arity = seen;
-
-	return NULL;
+	return eei_symboltable_get_variable(&parser->symboltable, index);
 }
 
 ee_function eei_parse_symbols_get_function(
 		eei_parser * parser,
-		ee_function_location location,
-		ee_arity arity,
 		const eei_parser_node * node,
+		ee_arity arity,
+		ee_function_flags any_flags,
+		ee_function_flags all_flags,
+		ee_function_flags not_flags,
 		int * wrong_arity)
 {
-	(void)location;
+	//Returns the function pointed to by the node, or NULL on error.
 
 	const ee_char_type * token_start = &parser->expression[node->text.start];
-	const ee_char_type * token_end = &parser->expression[node->text.end];
+	const ee_element_count token_length = node->text.end - node->text.start;
 
-	//Search the user function first, since they should take precedence over the library
-	ee_function user =
-			eei_parse_symbols_get_function_single
-			(
+	const int index =
+			eei_symboltable_find_text(
+				&parser->symboltable,
 				token_start,
-				token_end,
-				&parser->symboltable.foreign->functions,
-				parser->symboltable.functions,
-				arity,
-				wrong_arity
-			);
+				token_length);
 
-	if (user)
-		return user;
-
-	//Not found in the library, search in the foreign table
-	return
-			eei_parse_symbols_get_function_single
-			(
-				token_start,
-				token_end,
-				parser->symboltable.library,
-				parser->symboltable.library_functions,
+	ee_function function =
+			eei_symboltable_get_function(
+				&parser->symboltable,
+				index,
 				arity,
-				wrong_arity
-			);
+				any_flags,
+				all_flags,
+				not_flags);
+
+	if (wrong_arity)
+		*wrong_arity = (function == NULL) && (index >= 0);
+
+	return function;
 }
 
 //Parser core functions
@@ -2192,10 +2260,30 @@ ee_parser_reply eei_rule_handler_constant(eei_parser * parser, const eei_parser_
 
 ee_parser_reply eei_rule_handler_variable(eei_parser * parser, const eei_parser_node * node)
 {
-	ee_variable_type * var = eei_parse_symbols_get_variable(parser, node);
+	const ee_char_type * token_start = &parser->expression[node->text.start];
+	const ee_element_count token_length = node->text.end - node->text.start;
+
+	const int index =
+			eei_symboltable_find_text(
+				&parser->symboltable,
+				token_start,
+				token_length);
+
+	//Look for the variable
+	ee_variable_type * var =
+			eei_symboltable_get_variable(
+				&parser->symboltable,
+				index);
 
 	//Look for a zero-arity function with the same name
-	ee_function op = eei_parse_symbols_get_function(parser, ee_function_location_any, 0, node, NULL);
+	ee_function op =
+			eei_symboltable_get_function(
+				&parser->symboltable,
+				index,
+				0,
+				0,
+				ee_function_flag_prefix,
+				0);
 
 	if (var && op)
 		//We do not allow both to be defined to avoid confusion
@@ -2230,7 +2318,15 @@ ee_parser_reply eei_rule_handler_group(eei_parser * parser, const eei_parser_nod
 
 ee_parser_reply eei_rule_handler_prefix(eei_parser * parser, const eei_parser_node * node)
 {
-	ee_function op = eei_parse_symbols_get_function(parser, ee_function_location_prefix, 1, node, NULL);
+	ee_function op =
+			eei_parse_symbols_get_function(
+				parser,
+				node,
+				1,
+				0,
+				ee_function_flag_prefix,
+				0,
+				NULL);
 
 	if (!op)
 		return ee_parser_prefix_not_implemented;
@@ -2240,7 +2336,15 @@ ee_parser_reply eei_rule_handler_prefix(eei_parser * parser, const eei_parser_no
 
 ee_parser_reply eei_rule_handler_infix(eei_parser * parser, const eei_parser_node * node)
 {
-	ee_function op = eei_parse_symbols_get_function(parser, ee_function_location_infix, 2, node, NULL);
+	ee_function op =
+			eei_parse_symbols_get_function(
+				parser,
+				node,
+				2,
+				0,
+				ee_function_flag_infix,
+				0,
+				NULL);
 
 	if (!op)
 		return ee_parser_infix_not_implemented;
@@ -2250,7 +2354,15 @@ ee_parser_reply eei_rule_handler_infix(eei_parser * parser, const eei_parser_nod
 
 ee_parser_reply eei_rule_handler_postfix(eei_parser * parser, const eei_parser_node * node)
 {
-	ee_function op = eei_parse_symbols_get_function(parser, ee_function_location_postfix, 1, node, NULL);
+	ee_function op =
+			eei_parse_symbols_get_function(
+				parser,
+				node,
+				1,
+				0,
+				ee_function_flag_postfix,
+				0,
+				NULL);
 
 	if (!op)
 		return ee_parser_postfix_not_implemented;
@@ -2263,6 +2375,7 @@ ee_parser_reply eei_rule_handler_function(eei_parser * parser, const eei_parser_
 	//An identifier must be on the stack at this point
 	eei_parser_node identifier;
 
+	//Pop it since we're going to use it as the function name
 	ee_parser_reply reply =
 			eei_parse_popT(
 				parser,
@@ -2272,6 +2385,7 @@ ee_parser_reply eei_rule_handler_function(eei_parser * parser, const eei_parser_
 	if (reply != ee_parser_ok)
 		return reply;
 
+	//Make sure this is acutally an indentifier, or an operator if allowed, as theese are the only things curently supported
 	if (
 		(GET_RULE_TOKEN_TYPE(identifier.rule->rule) != eei_token_identifier)
 #		if EEI_ALLOW_PREFIX_OPERATOR_FUNCTIONS
@@ -2283,10 +2397,22 @@ ee_parser_reply eei_rule_handler_function(eei_parser * parser, const eei_parser_
 					ee_parser_expression_identifier_expected,
 					&((eei_parser_token){GET_RULE_TOKEN(identifier.rule->rule), identifier.text}));
 
+	//The arity is just the amount of items on the run-time stack added since the identifier itself was parsed
 	const ee_arity arity = (ee_arity)(parser->vm.current.stack - identifier.stack_top);
-	int wrong_arity = 0;
-	ee_function op = eei_parse_symbols_get_function(parser, ee_function_location_infix, arity, &identifier, &wrong_arity);
 
+	int wrong_arity = 0;
+	ee_function op =
+			eei_parse_symbols_get_function(
+				parser,
+				&identifier,
+				arity,
+				0,
+				ee_function_flag_infix |
+				((GET_RULE_TOKEN_TYPE(identifier.rule->rule) != eei_token_operator) ? ee_function_flag_operator : 0),
+				0,
+				&wrong_arity);
+
+	//In case of an error make sure we report what happened
 	if (!op)
 		return eei_parse_set_error(
 					parser,
@@ -2303,6 +2429,7 @@ ee_parser_reply eei_rule_handler_assign(eei_parser * parser, const eei_parser_no
 	//An identifier must be on the stack at this point
 	eei_parser_node identifier;
 
+	//Pop it since we're going to use it as the LHS identifier
 	ee_parser_reply reply =
 			eei_parse_popT(
 				parser,
@@ -2312,15 +2439,17 @@ ee_parser_reply eei_rule_handler_assign(eei_parser * parser, const eei_parser_no
 	if (reply != ee_parser_ok)
 		return reply;
 
+	//Make sure this is acutally an indentifier as this is the only thing curently supported
 	if (GET_RULE_TOKEN_TYPE(identifier.rule->rule) != eei_token_identifier)
 		return eei_parse_set_error(
 					parser,
 					ee_parser_expression_identifier_expected,
 					&((eei_parser_token){GET_RULE_TOKEN(identifier.rule->rule), identifier.text}));
 
-	//Get the variables
+	//Get the actual variable
 	ee_variable_type * var = eei_parse_symbols_get_variable(parser, &identifier);
 
+	//In case of an error make sure we report what happened
 	if (!var)
 		return eei_parse_set_error(
 					parser,
@@ -2682,6 +2811,19 @@ void eei_environment_compact(
 //External API
 //------------
 
+ee_symboltable_reply ee_symboltable_add(
+		ee_symboltable_header * symboltable,
+		const ee_symboltable_functions functions,
+		const ee_symboltable_variables variables)
+{
+	if (symboltable->size == 0)
+	{
+		//This is a request for a size estimate
+	}
+
+}
+
+
 ee_parser_reply ee_guestimate(const ee_char_type * expression, ee_data_size * size)
 {
 	int identifiers = 0;
@@ -2753,9 +2895,9 @@ ee_parser_reply ee_guestimate(const ee_char_type * expression, ee_data_size * si
 ee_parser_reply ee_compile(
 		const ee_char_type * expression,
 		ee_data_size * size,
+		const ee_symboltable_header * symboltable,
 		ee_compilation_header * compilation,
-		ee_environment environment,
-		const ee_compilation_data *data)
+		ee_environment environment)
 {
 	eei_parser parser;
 

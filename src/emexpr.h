@@ -66,13 +66,54 @@ typedef int (*ee_constant_parser)(const ee_char_type * start, const ee_char_type
 //It is posible to use the same function under different names and arities.
 typedef int (*ee_function)(ee_element_count arity, const ee_variable_type * actuals, ee_variable_type * result);
 
-//Describes a single function
+//Type used for holding function flags
+typedef unsigned char ee_function_flags;
+
+typedef enum
+{
+	//The function always returns the same value
+	ee_function_flag_const = 1 << 0,
+
+	//The function has no side effects
+	ee_function_flag_pure = 1 << 1,
+
+	//The function can be used an as operator
+	ee_function_flag_operator = 1 << 2,
+
+	//The function can be used from a prefix rule
+	ee_function_flag_prefix = 1 << 3,
+
+	//The function can be used from a infix rule
+	ee_function_flag_infix = 1 << 4,
+
+	//The function can be used from a postfix rule
+	ee_function_flag_postfix = 1 << 5,
+
+
+	//No function can exist with this flags combination
+	ee_function_flag_invalid = 0,
+
+	//The function can be invoked at any time
+	ee_function_flag_static = ee_function_flag_const | ee_function_flag_pure,
+
+	//The function can be used in any location
+	ee_function_flag_anywhere =
+	ee_function_flag_operator | ee_function_flag_prefix | ee_function_flag_infix | ee_function_flag_postfix,
+
+	//The ideal function that can fill all roles and be completely folded during compilation
+	ee_function_flag_ideal = ee_function_flag_static | ee_function_flag_anywhere
+} ee_function_flag;
+
+//Describes a single user function
 typedef struct
 {
 	//The function itself.
 	//This can be NULL when used to signal the end of a function array.
 	//It is assumed all functions are pure (have no visible side effets).
-	ee_function function;
+	const ee_function item;
+
+	//The name of the function, as it should be referenced inside an expresiion
+	const ee_char_type * name;
 
 	//The count of parameters accepted by this function.
 	//Arity can be zero.
@@ -92,68 +133,38 @@ typedef struct
 	//Function with an arity of one can have the same name as a variable when used ONLY as a post-fix operator.
 	const ee_arity arity;
 
-} ee_compilation_data_function;
+	//Flags. See the comments inside the ee_function_flag enumeration.
+	const ee_function_flags flags;
+} ee_symboltable_function;
 
-//This structure provides meta-data for ee_compilation_data variables and functions.
-//See its comment for explanations.
+//Describes a single bound variable
 typedef struct
 {
-	const ee_char_type * const * names;
-	ee_element_count count;
-} ee_compilation_data_meta;
+	//A pointer to the bound variable
+	ee_variable_type * item;
 
-//This structure provides complete variables data for ee_compilation_data.
-//See its comment for explanations.
-typedef struct
-{
-	ee_variable const * data;
-	ee_compilation_data_meta meta;
-} ee_compilation_data_variables;
+	//The name of the variable, as it should be referenced inside an expresiion
+	const ee_char_type * name;
+} ee_symboltable_variable;
 
-//This structure provides complete functions data for ee_compilation_data.
-//See its comment for explanations.
-typedef struct
-{
-	ee_compilation_data_function * data;
-	ee_compilation_data_meta meta;
-} ee_compilation_data_functions;
-
-//This structure is used to supply external hooks to emexpr.
+//This vectors are used to supply variable binding and user functions to emexpr.
 //The referenced variables and functions must remain at the given addresses
 //	until the environment compiled with this data in no longer needed.
-//The arrays used for referencing, naming, arity, the names and this structure itself
+//The vecors themselves, including the used names,
 //	can be deleted/reused right away after running ee_compile.
-//Both variables and functions use the same mechanism for providing the
-//	hooks, their names and determining their count.
-//
-//The variables/functions::data members - the data member:
-//	An array of pointers to the variables or function desctiptions;
-//	Can be NULL is there are no elements at all.
-//	The last element of the array can, optionally, itself be null.
-//	For functions the function member is the one to NULL-ify since
-//		an arity if zero is, in itself, valid.
-//
-//The variables/functions::meta::names members - the names member:
-//	An array of names accosiated with the elements from the data member, in order.
-//	Must have the same number of elements as the data member.
-//	Ignored if the data member is NULL and must be valid otherwise.
-//	The last element of the array can, optionally, itself be null.
-//
-//The variables/functions::meta::count members - the count member:
-//	Holds the number of elements in the previous members.
-//	Can be zero if any of the above arrays is NULL terminated and
-//		MUST be non-zero if both the above arrays are not NULL-terminated.
-//	When zero it is ignored during calculations of element counts.
-//
-//The count of the elements is performed as follows:
-//	Both the data and names members are walked in parallell.
-//	As soon as a NULL element is encountered in any (or both) arrays, or the count
-//		reaches the number supplied in the count member (if non zero) - the count is terminated.
-typedef struct
+//End of vector is marked by the item and/or name being NULL.
+typedef const ee_symboltable_function * ee_symboltable_functions;
+typedef const ee_symboltable_variable * ee_symboltable_variables;
+
+typedef enum
 {
-	ee_compilation_data_variables variables;
-	ee_compilation_data_functions functions;
-} ee_compilation_data;
+	//All is well
+	ee_symboltable_ok,
+
+	//Not enough memory
+	ee_symboltable_memory
+
+} ee_symboltable_reply;
 
 //Status returned by the parser
 typedef enum
@@ -309,6 +320,13 @@ typedef struct
 	ee_element_count runtime_stack;
 } ee_data_size;
 
+//Semi-transparent header of the symbol-table binder
+typedef struct
+{
+	int flags;
+	ee_memory_size size;
+} ee_symboltable_header;
+
 //Semi-transparent header of the compilation environment
 typedef struct
 {
@@ -328,6 +346,22 @@ typedef struct
 //Typedef to simply the interface
 typedef ee_environment_header * ee_environment;
 
+//Add
+//	all the functions from the vector of functions and
+//	all the variables from the vector of variables to the symbol table.
+//If the table is not big enough ee_symboltable_memory will be returned and
+//	the "size" will hold the requested size, in bytes.
+//If the 'size' is zero the needed space will be calculated and returned back in 'size'.
+//When both the vectors are NULL will return the minimal size needed (including for any library data).
+//Before the first invocation set 'flags' to zero and 'size' to the total allocated size.
+//After adding all needed data call once again with both vectors NULL to finalize the symboltable.
+//On exit the 'size' field will hold the size taken by the data, after compaction, so the table
+//	could be resized to reclaim memory, if needed.
+ee_symboltable_reply ee_symboltable_add(
+		ee_symboltable_header * symboltable,
+		const ee_symboltable_functions functions,
+		const ee_symboltable_variables variables);
+
 
 //Anayze the expression and estimate the upper bound of needed memory, in bytes.
 ee_parser_reply ee_guestimate(
@@ -342,9 +376,9 @@ ee_parser_reply ee_guestimate(
 ee_parser_reply ee_compile(
 		const ee_char_type * expression,
 		ee_data_size * size,
+		const ee_symboltable_header * symboltable,
 		ee_compilation_header * compilation,
-		ee_environment environment,
-		const ee_compilation_data * data);
+		ee_environment environment);
 
 //Evaluate the compiled environment
 ee_evaluator_reply ee_evaluate(ee_environment environment, ee_variable result);
