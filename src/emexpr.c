@@ -1586,12 +1586,12 @@ ee_symboltable_reply eei_symboltable_find_text(
 	//Select first level index based on the first symbol
 	const int index1 = *start - eei_symboltable_first_symbol;
 
+	index->first = index1;
+
 	//If there is no second level data for this symbol...
 	if (st->first.next.counts[index1] == 0)
 		//...there is nothing more to be done
 		return ee_symboltable_no_name;
-
-	index->first = index1;
 
 	//Advance to the next symbol to simplify all following code
 	start++;
@@ -1780,11 +1780,11 @@ ee_symboltable_reply eei_symboltable_get_function(
 //Symbol table building
 //---------------------
 
-ee_symboltable_reply eei_symboltable_add_text(
+ee_symboltable_reply eei_symboltable_add_textbook(
 		eei_symboltable * st,
 		const ee_char_type * start,
 		ee_element_count length,
-		eei_symboltable_index * index)
+		eei_symboltable_element_count * book_index)
 {
 	//Add the text into the textbook and fill the data according to the index
 	//The appropriate elements at level 2 must already be allocated
@@ -1792,8 +1792,7 @@ ee_symboltable_reply eei_symboltable_add_text(
 	if (length == 1)
 	{
 		//This is a trivial case when nothing is stored in the textbook
-		st->second.book.counts[index->second] = 1;
-		st->second.book.indexes[index->second] = 0;
+		*book_index = 0;
 		return ee_symboltable_ok;
 	}
 
@@ -1804,8 +1803,7 @@ ee_symboltable_reply eei_symboltable_add_text(
 		//	to actually use the textbook itself.
 		//This allows for all symbols of length 2 not to take any space in the textbook.
 		//Currently this includes, at least, all recognised operators.
-		st->second.book.counts[index->second] = 2;
-		st->second.book.indexes[index->second] = start[1];
+		*book_index = start[1];
 		return ee_symboltable_ok;
 	}
 
@@ -1841,8 +1839,7 @@ ee_symboltable_reply eei_symboltable_add_text(
 	if (matched)
 	{
 		//The symbol exists in the textbook in it's entirety, so nothing more needs to be done
-		st->second.book.counts[index->second] = length + 1;
-		st->second.book.indexes[index->second] = start_index;
+		*book_index = start_index;
 		return ee_symboltable_ok;
 	}
 
@@ -1869,13 +1866,8 @@ ee_symboltable_reply eei_symboltable_add_text(
 	st->used.textbook += leftover;
 
 	if (st->used.textbook > st->allocated->textbook)
-	{
-		//Return the used space so that any following calculation would remain correct
-		st->used.textbook -= leftover;
-
 		//We're out of free space!
 		return ee_symboltable_memory;
-	}
 
 	//Copy the data to the textbook.
 	//We simply copy all of the text to avoid doing funky calculations for edge cases that would
@@ -1883,8 +1875,284 @@ ee_symboltable_reply eei_symboltable_add_text(
 	for (int i = 0; i < length; ++i)
 		st->second.textbook[start_index + i] = start[i];
 
-	st->second.book.counts[index->second] = length + 1;
-	st->second.book.indexes[index->second] = start_index;
+	*book_index = start_index;
+	return ee_symboltable_ok;
+}
+
+int eei_symboltable_find_first_at_second(const eei_symboltable * st, int index)
+{
+	//Find the first-level index that spans the requested second level index
+	for (int i = 0; i < eei_symboltable_total_symbols; ++i)
+		if (
+			st->first.next.counts[i]
+			&& (st->first.next.indexes[i] <= index)
+			&& (st->first.next.indexes[i] + st->first.next.counts[i] > index))
+			return i;
+
+	return -1;
+}
+
+static inline void eei_symboltable_swap_element_count(
+		eei_symboltable_element_count * a,
+		eei_symboltable_element_count *b)
+{
+	eei_symboltable_element_count tmp = *a;
+	*a = *b;
+	*b = tmp;
+}
+
+static inline void eei_symboltable_move_second(eei_symboltable * st, int dst, int src)
+{
+	st->second.book.counts[dst] = st->second.book.counts[src];
+	st->second.book.indexes[dst] = st->second.book.indexes[src];
+	st->second.next.counts[dst] = st->second.next.counts[src];
+	st->second.next.indexes[dst] = st->second.next.indexes[src];
+
+	st->second.book.counts[src] = 0;
+	st->second.next.counts[src] = 0;
+}
+
+static inline void eei_symboltable_swap_second(eei_symboltable * st, int a, int b)
+{
+	eei_symboltable_swap_element_count(&st->second.book.counts[a], &st->second.book.counts[b]);
+	eei_symboltable_swap_element_count(&st->second.book.indexes[a], &st->second.book.indexes[b]);
+	eei_symboltable_swap_element_count(&st->second.next.counts[a], &st->second.next.counts[b]);
+	eei_symboltable_swap_element_count(&st->second.next.indexes[a], &st->second.next.indexes[b]);
+}
+
+static inline void eei_symboltable_move_first(eei_symboltable * st, int dst, int src)
+{
+	st->first.next.counts[dst] = st->first.next.counts[src];
+	st->first.next.indexes[dst] = st->first.next.indexes[src];
+
+	st->first.next.counts[src] = 0;
+}
+
+static inline void eei_symboltable_swap_first(eei_symboltable * st, int a, int b)
+{
+	eei_symboltable_swap_element_count(&st->first.next.counts[a], &st->first.next.counts[b]);
+	eei_symboltable_swap_element_count(&st->first.next.indexes[a], &st->first.next.indexes[b]);
+}
+
+int eei_symboltable_try_grow(eei_symboltable * st, eei_symboltable_index * index)
+{
+	//Returns the direction where we can grow, or zero if none
+
+	//First try to grow left
+	if (st->first.next.indexes[index->first] > 0)
+	{
+		const int neighbour =
+				eei_symboltable_find_first_at_second(st, st->first.next.indexes[index->first]-1);
+
+		if (neighbour == -1)
+			//No one is there, use it
+			return -1;
+	}
+
+	//Then try to grow right
+
+	if ((st->first.next.indexes[index->first] + st->first.next.counts[index->first]) == st->used.second_level)
+	{
+		//We're at the end of used space - use it
+		st->used.second_level++;
+		return 1;
+	}
+
+	//Try to see who's next to us
+	const int neighbour =
+			eei_symboltable_find_first_at_second(st, st->first.next.indexes[index->first] + st->first.next.counts[index->first]);
+
+	if (neighbour == -1)
+		//No one is there, use it
+		return 1;
+
+	return 0;
+}
+
+void eei_symboltable_move_in_memory(eei_symboltable * st, eei_symboltable_index * index)
+{
+	//Do something to get us closer to being able to append/prepend a second level element.
+	//There are several options available.
+	//If the last block is the same size as us, we swap, thus becoming the last block ourselves.
+	//If there are big enough holes in the memory we move there.
+
+	//Find who is at the last block
+	const int last_block = eei_symboltable_find_first_at_second(st,st->used.second_level-1);
+
+	//It is us then something is wrong
+	if (last_block == index->first)
+		return;
+
+	if (last_block >= 0)
+	{
+		//There is someone there
+		const int last_size = st->first.next.counts[last_block];
+
+		if (last_size == st->first.next.counts[index->first])
+		{
+			//We have the same size as the last block - so we can simply swap
+
+			const int a = st->first.next.indexes[last_block];
+			const int b = st->first.next.indexes[index->first];
+
+			for (int i = 0; i < last_size; ++i)
+				eei_symboltable_swap_second(st, a+i, b+i);
+
+			eei_symboltable_swap_first(st, last_block, index->first);
+			index->first = last_block;
+
+			//We are now the last block
+			return;
+		}
+	}
+
+
+	//Use a stupid iterative algorithm to find the smallest hole that is at least one element bigger than us
+	const int needed = st->first.next.counts[index->first]+1;
+	int current = 0;
+
+	int hole_index = -1;
+	int hole_size = 0;
+
+	int best_size = st->used.second_level;
+	int best_index = -1;
+
+	while (current < st->used.second_level)
+	{
+		const int block = eei_symboltable_find_first_at_second(st,current);
+		if (block == -1)
+		{
+			if (hole_index == -1)
+				hole_index = current;
+
+			hole_size++;
+			current++;
+		}
+		else
+		{
+			if (block == index->first)
+				hole_size += st->first.next.counts[index->first];
+
+			//This ends the current hole
+			if (hole_size >= needed)
+			{
+				if (best_size > hole_size)
+				{
+					best_size = hole_size;
+					best_index = hole_index;
+				}
+			}
+
+			hole_size = 0;
+			current += st->first.next.counts[block];
+		}
+	}
+
+	//No suitable hole ws found
+	if (best_index == -1)
+		return;
+
+	//Move into the hole
+
+	const int dst = best_index;
+	const int src = st->first.next.indexes[index->first];
+	st->first.next.indexes[index->first] = dst;
+
+	for (int i = 0; i < st->first.next.counts[index->first]; ++i)
+		eei_symboltable_move_second(st, dst+i, src+i);
+}
+
+ee_symboltable_reply eei_symboltable_add_text(
+		eei_symboltable * st,
+		const ee_char_type * start,
+		ee_element_count length,
+		eei_symboltable_index * index)
+{
+	//Verify there is enough space to theortically add text
+	if ((st->used.second_level + 1) > st->allocated->second_level)
+		return ee_symboltable_memory;
+
+	//Save this to allow restoring on failure
+	const ee_memory_size book_used = st->used.textbook;
+	eei_symboltable_element_count book_index;
+
+	//Try to insert this symbol into the textbook as early as possible
+	//	 since the outcome is hard to predict but can easily be reversed.
+	{
+		const ee_symboltable_reply treply = eei_symboltable_add_textbook(st,start,length,&book_index);
+		if (treply != ee_symboltable_ok)
+		{
+			//Restore the used space and bail out
+			st->used.textbook = book_used;
+			return treply;
+		}
+	}
+
+	//At this point the text is already inside the textbook
+	//Now we need to add it to the first 2 levels
+
+	if (st->first.next.counts[index->first] == 0)
+	{
+		//Adding to an empty first-level is trivial
+		//Just allocate a new second-level element and use it
+		index->second = st->used.second_level;
+		st->used.second_level++;
+
+		st->first.next.counts[index->first] = 1;
+		st->first.next.indexes[index->first] = index->second;
+	}
+	else
+	{
+		int direction = eei_symboltable_try_grow(st, index);
+		if (direction == 0)
+		{
+			eei_symboltable_move_in_memory(st, index);
+			direction = eei_symboltable_try_grow(st, index);
+		}
+
+		if (direction == 1)
+		{
+			//We can append an element to our end
+			index->second = st->first.next.indexes[index->first] + st->first.next.counts[index->first];
+			st->first.next.counts[index->first]++;
+		}
+		else if (direction == -1)
+		{
+			//We can prepent an element to our start
+			st->first.next.indexes[index->first]--;
+			index->second = st->first.next.indexes[index->first];
+			st->first.next.counts[index->first]++;
+		}
+		else if ((st->allocated->second_level - st->used.second_level) >= (st->first.next.counts[index->first]+1))
+		{
+			//We can allocate brand new space and use it
+
+			const int dst = st->used.second_level;
+			const int src = st->first.next.indexes[index->first];
+			st->first.next.indexes[index->first] = dst;
+
+			st->used.second_level += st->first.next.counts[index->first];
+
+			for (int i = 0; i < st->first.next.counts[index->first]; ++i)
+				eei_symboltable_move_second(st, dst+i, src+i);
+
+			index->second = st->used.second_level++;
+			st->first.next.counts[index->first]++;
+		}
+		else
+		{
+			//Restore the used space and bail out
+			st->used.textbook = book_used;
+			return ee_symboltable_fragmented;
+		}
+	}
+
+	//Write the textbook data into the element
+	st->second.book.counts[index->second] = length;
+	st->second.book.indexes[index->second] = book_index;
+
+	//The text was added
+	//The 'next' table at index->second needs to be filled by the caller.
 	return ee_symboltable_ok;
 }
 
@@ -1909,6 +2177,20 @@ ee_symboltable_reply eei_symboltable_add_variable(
 		 return ee_symboltable_ok;
 	 }
 
+	 //Make sure there is space in the data vector
+	 if (st->used.variables >= st->allocated->variables)
+		 return ee_symboltable_memory;
+
+	 //Also make sure there is space in the third level since a new variable
+	 //	 must insert an element there
+	 if (st->used.third_level >= st->allocated->third_level)
+		 return ee_symboltable_memory;
+
+
+
+
+	 //
+
  }
 
 ee_symboltable_reply eei_symboltable_add_function(
@@ -1932,6 +2214,10 @@ ee_symboltable_reply eei_symboltable_add_function(
 		 st->third.functions[index.data] = item;
 		 return ee_symboltable_ok;
 	 }
+
+	 //Make sure there is space in the data vector
+	 if (st->used.functions >= st->allocated->functions)
+		 return ee_symboltable_memory;
 
  }
 
