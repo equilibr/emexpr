@@ -1433,6 +1433,8 @@ enum
 	eei_symboltable_total_symbols = eei_symboltable_last_symbol - eei_symboltable_first_symbol + 1
 };
 
+typedef ee_element_count eei_symboltable_element_count;
+
 //Holds basic data about a function
 typedef struct
 {
@@ -1443,10 +1445,10 @@ typedef struct
 typedef struct
 {
 	//Start index in the next-level table for this element
-	ee_element_count * indexes;
+	eei_symboltable_element_count * indexes;
 
 	//Counts of next-level elements at each index for this element
-	ee_element_count * counts;
+	eei_symboltable_element_count * counts;
 } eei_symboltable_level;
 
 typedef struct
@@ -1461,7 +1463,7 @@ typedef struct
 typedef struct
 {
 	//Count of elements at this level
-	ee_element_count count;
+	eei_symboltable_element_count count;
 
 	//Index into the textbook where each second-level element starts, from the second symbol.
 	//Lengths of each element, including the first symbol.
@@ -1469,7 +1471,7 @@ typedef struct
 	eei_symboltable_level book;
 
 	//The textbook holding texts, from the second symbol forward
-	ee_element_count textbook_count;
+	eei_symboltable_element_count textbook_count;
 	ee_char_type * textbook;
 
 	//Index into the third-level table where function flag/arity combinations for this element start.
@@ -1481,7 +1483,7 @@ typedef struct
 {
 	//Count of elements at this level
 	//This is also the combined count of all function variations and variables stored in total.
-	ee_element_count count;
+	eei_symboltable_element_count count;
 
 	//The arity/flag combinations for a samely-named function.
 	//A flag of ee_function_flag_invalid denotes a variable.
@@ -1491,11 +1493,11 @@ typedef struct
 	//	is the index into the appropriate arrays where the actual data pointers are stored
 
 	//The bound variables
-	ee_element_count variables_count;
+	eei_symboltable_element_count variables_count;
 	ee_variable * variables;
 
 	//The user-functions
-	ee_element_count functions_count;
+	eei_symboltable_element_count functions_count;
 	ee_function * functions;
 } eei_symboltable_third_level;
 
@@ -2659,11 +2661,51 @@ ee_evaluator_reply eei_vm_execute(const eei_vm_environment * vm_environment)
 }
 
 
-//External API utility
-//--------------------
+//External API semi-opaque structures
+//-----------------------------------
 
-//Helper macro to calculate alignment of a type
-#define alignof(type) ((ptrdiff_t)&((struct { char c; type d; } *)0)->d)
+typedef struct
+{
+	//The elements are defined here in the order they appear
+	//	inside the symbol table memory, not in the order of usage by the code.
+	//Depending on the usage theese are offset, in bytes, or sizes, in elements.
+
+	//This has the following arrays, all of the same size, in order:
+	// second.book.indexes, second.book.counts, second.next.indexes, second.next.counts
+	ee_memory_size second_level;
+
+	//third.data
+	ee_memory_size third_level;
+
+	//third.variables
+	ee_memory_size variables;
+
+	//third.functions
+	ee_memory_size functions;
+
+	//second.textbook
+	ee_memory_size textbook;
+} eei_symboltable_data;
+
+
+//Internal direct data held inside a symbol table data structure
+typedef struct
+{
+	ee_symboltable_header header;
+
+	//Byte offsets from "data" for the various tables
+	eei_symboltable_data offsets;
+
+	//Element counts for each of the items in 'offsets'
+	eei_symboltable_data counts;
+
+	//This data is defined directly here since its size is constant
+	eei_symboltable_element_count first_level_indexes[eei_symboltable_total_symbols];
+	eei_symboltable_element_count first_level_counts[eei_symboltable_total_symbols];
+
+	char data[1];
+} eei_symboltable_struct;
+
 
 //Internal direct data held inside a compilation data structure
 typedef struct
@@ -2682,6 +2724,7 @@ typedef struct
 	ee_memory_size stack;
 } eei_environment_offsets;
 
+
 //Internal direct data held inside an execution environment
 typedef struct
 {
@@ -2695,6 +2738,13 @@ typedef struct
 
 	char data[1];
 } eei_environment_struct;
+
+
+//External API utility
+//--------------------
+
+//Helper macro to calculate alignment of a type
+#define alignof(type) ((ptrdiff_t)&((struct { char c; type d; } *)0)->d)
 
 void eei_guestimate_calculate_sizes(ee_data_size * size)
 {
@@ -2716,6 +2766,29 @@ void eei_guestimate_calculate_sizes(ee_data_size * size)
 			size->environment_size
 			+ alignof(ee_variable_type) + size->stack_size);
 }
+
+//Symbol table API utility
+//------------------------
+
+char * eei_symboltable_calculate_offsets(
+		eei_symboltable_data * offsets,
+		char * base,
+		const eei_symboltable_data * size)
+{
+	//Calculate the memory locations of all tables
+
+}
+
+void eei_symboltable_calculate_pointers(
+		eei_symboltable * pointers,
+		const eei_symboltable_struct * full)
+{
+	//Fill working pointers from the data
+
+}
+
+//Environment API utility
+//-----------------------
 
 char * eei_environment_calculate_offsets(
 		eei_environment_offsets * offsets,
@@ -2905,6 +2978,7 @@ ee_parser_reply ee_compile(
 
 	eei_environment_struct * full_env = (eei_environment_struct *)environment;
 	eei_compilation_struct * full_compilation = (eei_compilation_struct *)compilation;
+	const eei_symboltable_struct * full_symboltable = (const eei_symboltable_struct *)symboltable;
 
 	char * ptr = &full_compilation->data[0];
 	if (alignof(eei_parser_node))
@@ -2946,7 +3020,7 @@ ee_parser_reply ee_compile(
 	parser.expression = expression;
 	parser.expression_size = size->expression;
 
-	eei_parse_symbols_init(&parser, data);
+	eei_symboltable_calculate_pointers(&parser.symboltable, full_symboltable);
 	eei_parse_expression(&parser);
 
 	//Fill back data
