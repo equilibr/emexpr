@@ -1885,7 +1885,7 @@ ee_symboltable_reply eei_symboltable_add_text(
 		eei_symboltable_index * index)
 {
 	//Verify there is enough space to add text
-	if ((st->used.second_level + 1) > st->allocated->second_level)
+	if (st->used.second_level >= st->allocated->second_level)
 		return ee_symboltable_memory;
 
 	//Try to insert this symbol into the textbook as early as possible
@@ -1900,7 +1900,7 @@ ee_symboltable_reply eei_symboltable_add_text(
 	//At this point the text is already inside the textbook
 	//Now we need to add it to the first 2 levels
 
-	//First, find the second-level insertion point.
+	//Find the second-level insertion point.
 	const int insertion =
 			(st->first.next.counts[index->first] == 0)
 
@@ -1946,8 +1946,80 @@ ee_symboltable_reply eei_symboltable_add_text(
 	st->second.book.counts[insertion] = length;
 	st->second.book.indexes[insertion] = book_index;
 
-	//The text was added
-	//The 'next' table at index->second needs to be filled by the caller.
+	//This is a new symbol so it has no third level data
+	st->second.next.counts[insertion] = 0;
+
+	//The caller should set the index once it is knwon
+	index->second = insertion;
+
+	return ee_symboltable_ok;
+}
+
+ee_symboltable_reply eei_symboltable_add_third(
+		eei_symboltable * st,
+		eei_symboltable_index * index,
+		const ee_char_type * start,
+		const ee_element_count length)
+{
+	//Verify there is enough space to add new data
+	if (st->used.third_level >= st->allocated->third_level)
+		return ee_symboltable_memory;
+
+	if (index->second == -1)
+	{
+		//The symbol needs to be added
+		const ee_symboltable_reply reply =
+				eei_symboltable_add_text(st, start, length, index);
+
+		if (reply != ee_symboltable_ok)
+			return reply;
+	}
+
+	//At this point the first two levels are filled and the index points to them
+
+	//Find the third-level insertion point.
+	const int insertion =
+			(st->second.next.counts[index->second] == 0)
+
+			//Adding to an empty second-level is trivial: Just use the space at the end
+			? (st->used.third_level)
+
+			//Otherwise add at the end of the existing elements for this second level
+			: (st->second.next.indexes[index->second] + st->second.next.counts[index->second]);
+
+	if (st->second.next.counts[index->second] == 0)
+		//Only update a new first-level with the index
+		index->third = insertion;
+	else
+		//Save this to allow restoring it later since it might be modified by the index-update loop
+		index->third = st->second.next.indexes[index->second];
+
+	if (insertion != st->used.third_level)
+	{
+		//We need to move everything past the insertion point to preserve continuity
+
+		for (int destination = st->used.third_level; destination > insertion; --destination)
+		{
+			st->third.data[destination].flags = st->third.data[destination-1].flags;
+			st->third.data[destination].arity = st->third.data[destination-1].arity;
+		}
+
+		//We also need to update all second-level indexes that pointed into the moved elements
+		//	of the third level.
+
+		for (int i = 0; i < st->used.second_level; ++i)
+			if (st->second.next.indexes[i] >= insertion)
+				st->second.next.indexes[i]++;
+	}
+
+	//(re)set the index
+	st->second.next.indexes[index->second] = index->third;
+	st->second.next.counts[index->second]++;
+	st->used.third_level++;
+
+	//The caller should fill the data
+	index->third = insertion;
+
 	return ee_symboltable_ok;
 }
 
@@ -1971,20 +2043,47 @@ ee_symboltable_reply eei_symboltable_add_variable(
 		 return ee_symboltable_ok;
 	 }
 
+	 //This is new data that needs to be added
+
 	 //Make sure there is space in the data vector
 	 if (st->used.variables >= st->allocated->variables)
 		 return ee_symboltable_memory;
 
-	 //Also make sure there is space in the third level since a new variable
-	 //	 must insert an element there
-	 if (st->used.third_level >= st->allocated->third_level)
-		 return ee_symboltable_memory;
+	 //Add third-level data for a variable
+	 reply = eei_symboltable_add_third(st,&index,start,length);
+	 if (reply != ee_symboltable_ok)
+		 return reply;
 
+	 //Write the data into the third-level
+	 st->third.data[index.third].flags = ee_function_flag_invalid;
+	 st->third.data[index.third].arity = 0;
 
+	 //Find the index for the new item
+	 {
+		 int accumulator = 0;
+		 for (int i = 0; i < index.third; ++i)
+			 accumulator +=
+					 (st->third.data[i].flags == ee_function_flag_invalid)
+					 ? 1
+					 : 0;
 
+		 if (accumulator > st->used.variables)
+			 //Something went terribly wrong!
+			 return ee_symboltable_out_of_bounds;
 
-	 //
+		 index.data = accumulator;
+	 }
 
+	 if (index.data < st->used.variables)
+	 {
+		 //We need to move everything to make space for the new data
+		 for (int destination = st->used.variables; destination > index.data; --destination)
+			 st->third.variables[destination] = st->third.variables[destination-1];
+	 }
+
+	 st->used.variables++;
+	 st->third.variables[index.data] = item;
+	 return ee_symboltable_ok;
  }
 
 ee_symboltable_reply eei_symboltable_add_function(
@@ -2009,10 +2108,47 @@ ee_symboltable_reply eei_symboltable_add_function(
 		 return ee_symboltable_ok;
 	 }
 
+	 //This is new data that needs to be added
+
 	 //Make sure there is space in the data vector
 	 if (st->used.functions >= st->allocated->functions)
 		 return ee_symboltable_memory;
 
+	 //Add third-level data for a variable
+	 reply = eei_symboltable_add_third(st,&index,start,length);
+	 if (reply != ee_symboltable_ok)
+		 return reply;
+
+	 //Write the data into the third-level
+	 st->third.data[index.third].flags = flags;
+	 st->third.data[index.third].arity = arity;
+
+	 //Find the index for the new item
+	 {
+		 int accumulator = 0;
+		 for (int i = 0; i < index.third; ++i)
+			 accumulator +=
+					 (st->third.data[i].flags != ee_function_flag_invalid)
+					 ? 1
+					 : 0;
+
+		 if (accumulator > st->used.functions)
+			 //Something went terribly wrong!
+			 return ee_symboltable_out_of_bounds;
+
+		 index.data = accumulator;
+	 }
+
+	 if (index.data < st->used.functions)
+	 {
+		 //We need to move everything to make space for the new data
+		 for (int destination = st->used.functions; destination > index.data; --destination)
+			 st->third.functions[destination] = st->third.functions[destination-1];
+	 }
+
+	 st->used.functions++;
+	 st->third.functions[index.data] = item;
+	 return ee_symboltable_ok;
  }
 
 
