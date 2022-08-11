@@ -146,22 +146,27 @@ void test_print_location(const char * expression, const ee_compilation_header * 
 		printf("START");
 }
 
+void test_symboltable()
+{
+	memset(&global_symboltable.header, 0, sizeof(ee_symboltable_header));
+	global_symboltable.header.size = sizeof(global_symboltable);
+
+	printf("Symbol table size: %d", global_symboltable.header.size);
+	ee_symboltable_add(&global_symboltable.header, funcData, varData);
+	ee_symboltable_add(&global_symboltable.header, NULL, NULL);
+	printf(" -> %d\n", global_symboltable.header.size);
+}
+
 int test_expression(const char * expression)
 {
 	ee_data_size sizes;
 	ee_data_size sizes_guess;
 	ee_data_size sizes_delta;
 
-	memset(&global_symboltable.header, 0, sizeof(ee_symboltable_header));
 	memset(&global_parser.header, 0, sizeof(ee_compilation_header));
 	memset(&global_environment.header, 0, sizeof(ee_environment_header));
 
-	global_symboltable.header.size = sizeof(global_symboltable);
-
 	printf("%20s = ",expression);
-
-	ee_symboltable_add(&global_symboltable.header, funcData, varData);
-	ee_symboltable_add(&global_symboltable.header, NULL, NULL);
 
 	ee_guestimate(expression, &sizes);
 	memcpy(&sizes_guess, &sizes, sizeof(ee_data_size));
@@ -209,6 +214,7 @@ int test_expression(const char * expression)
 
 int main()
 {
+	test_symboltable();
 	test_print_header();
 	var1 = 0;
 
