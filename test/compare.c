@@ -280,7 +280,7 @@ static const char * eval[] =
 	NULL
 };
 
-void compare_measure()
+void compare()
 {
 	ee_variable_type inputs[MeasureArities];
 	double measurement;

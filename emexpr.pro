@@ -11,7 +11,8 @@ SOURCES += \
 	src/eelib/errors.c \
 	src/emexpr.c \
 	test/compare.c \
-	test/main.c
+	test/main.c \
+	test/test_sizes.c
 
 HEADERS += \
 	src/eelib/emexpr.h \
