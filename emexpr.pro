@@ -10,6 +10,7 @@ QMAKE_CFLAGS += -pedantic-errors
 SOURCES += \
 	src/eelib/errors.c \
 	src/emexpr.c \
+	test/compare.c \
 	test/main.c
 
 HEADERS += \

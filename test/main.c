@@ -212,6 +212,8 @@ int test_expression(const char * expression)
 	return 0;
 }
 
+void compare_measure();
+
 int main()
 {
 	test_symboltable();
@@ -273,6 +275,9 @@ int main()
 	test_expression("1+)");
 	test_expression("novar");
 	test_expression("nofunc()");
+
+	printf("\n");
+	compare_measure();
 
 	return 0;
 }
