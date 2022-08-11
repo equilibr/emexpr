@@ -1467,11 +1467,11 @@ typedef struct
 
 typedef struct
 {
-	//Start index in the next-level table for this element
-	eei_symboltable_element_count * indexes;
-
 	//Counts of next-level elements at each index for this element
-	eei_symboltable_element_count * counts;
+	eei_symboltable_element_count count;
+
+	//Start index in the next-level table for this element
+	eei_symboltable_element_count index;
 } eei_symboltable_level;
 
 typedef struct
@@ -1480,21 +1480,21 @@ typedef struct
 
 	//Indexes into the second-level search tables based on the first symbol
 	//Counts of elements in the second-level search table for each first symbol
-	eei_symboltable_level next;
+	eei_symboltable_level * next;
 } eei_symboltable_first_level;
 
 typedef struct
 {
 	//Index into the textbook where the text, from the second character of the symbol, starts.
 	//Length of each symbol, including the first character.
-	eei_symboltable_level book;
+	eei_symboltable_level * book;
 
 	//The textbook holding symbols, from the second character forward
 	ee_char_type * textbook;
 
 	//Index into the third-level table where function flag/arity combinations for a symbol start.
 	//Count of combinations.
-	eei_symboltable_level next;
+	eei_symboltable_level * next;
 } eei_symboltable_second_level;
 
 typedef struct
@@ -1588,7 +1588,7 @@ ee_symboltable_reply eei_symboltable_find_text(
 	index->first = index1;
 
 	//If there is no second level data for this symbol...
-	if (st->first.next.counts[index1] == 0)
+	if (st->first.next[index1].count == 0)
 		//...there is nothing more to be done
 		return ee_symboltable_no_name;
 
@@ -1596,15 +1596,15 @@ ee_symboltable_reply eei_symboltable_find_text(
 	start++;
 
 	//The starting index
-	int index2 = st->first.next.indexes[index1];
+	int index2 = st->first.next[index1].index;
 
 	//The stopping index
-	int index2_stop = index2 + st->first.next.counts[index1];
+	int index2_stop = index2 + st->first.next[index1].count;
 
 	for (; index2 < index2_stop; ++index2)
 	{
 		//If the text lenghts don't match...
-		if (st->second.book.counts[index2] != length)
+		if (st->second.book[index2].count != length)
 			//...no use in further testing
 			continue;
 
@@ -1613,7 +1613,7 @@ ee_symboltable_reply eei_symboltable_find_text(
 		if (length == 2)
 		{
 			//At length of 2 the second symbol is stored inside the *INDEX*
-			if (st->second.book.indexes[index2] != start[0])
+			if (st->second.book[index2].index != start[0])
 				//Textbook mismatch
 				continue;
 		}
@@ -1624,12 +1624,12 @@ ee_symboltable_reply eei_symboltable_find_text(
 			const int adjusted_length = length - 1;
 
 			//Make sure the comparison will not read past the end of the textbook
-			if ((st->second.book.indexes[index2] + adjusted_length) > st->used->textbook)
+			if ((st->second.book[index2].index + adjusted_length) > st->used->textbook)
 				//This should never happen, but it did...
 				return ee_symboltable_out_of_bounds;
 
 			const ee_char_type * textbook =
-					&st->second.textbook[ st->second.book.indexes[index2] ];
+					&st->second.textbook[ st->second.book[index2].index ];
 
 			int i = 0;
 			for (; i < adjusted_length; ++i)
@@ -1663,8 +1663,8 @@ ee_symboltable_reply eei_symboltable_get_variable(
 		return ee_symboltable_no_name;
 
 	//Make sure a variable actually exists at that index in the third level
-	int index3 = st->second.next.indexes[index->second];
-	int index3_stop = index3 + st->second.next.counts[index->second];
+	int index3 = st->second.next[index->second].index;
+	int index3_stop = index3 + st->second.next[index->second].count;
 
 	for (; index3 < index3_stop; ++index3)
 		if (st->third.data[index3].flags == ee_function_flag_invalid)
@@ -1710,8 +1710,8 @@ ee_symboltable_reply eei_symboltable_get_function(
 		return ee_symboltable_no_name;
 
 	//Find the matching function at that index in the third level
-	int index3 = st->second.next.indexes[index->second];
-	int index3_stop = index3 + st->second.next.counts[index->second];
+	int index3 = st->second.next[index->second].index;
+	int index3_stop = index3 + st->second.next[index->second].count;
 
 	int seen_function = 0;
 
@@ -1902,20 +1902,20 @@ ee_symboltable_reply eei_symboltable_add_text(
 
 	//Find the second-level insertion point.
 	const int insertion =
-			(st->first.next.counts[index->first] == 0)
+			(st->first.next[index->first].count == 0)
 
 			//Adding to an empty first-level is trivial: Just use the space at the end
 			? (st->used->second_level)
 
 			//Otherwise add at the end of the existing elements for this first level
-			: (st->first.next.indexes[index->first] + st->first.next.counts[index->first]);
+			: (st->first.next[index->first].index + st->first.next[index->first].count);
 
-	if (st->first.next.counts[index->first] == 0)
+	if (st->first.next[index->first].count == 0)
 		//Only update a new first-level with the index
 		index->second = insertion;
 	else
 		//Save this to allow restoring it later since it might be modified by the index-update loop
-		index->second = st->first.next.indexes[index->first];
+		index->second = st->first.next[index->first].index;
 
 	if (insertion != st->used->second_level)
 	{
@@ -1923,31 +1923,31 @@ ee_symboltable_reply eei_symboltable_add_text(
 
 		for (int destination = st->used->second_level; destination > insertion; --destination)
 		{
-			st->second.book.indexes[destination] = st->second.book.indexes[destination-1];
-			st->second.book.counts[destination] = st->second.book.counts[destination-1];
-			st->second.next.indexes[destination] = st->second.next.indexes[destination-1];
-			st->second.next.counts[destination] = st->second.next.counts[destination-1];
+			st->second.book[destination].index = st->second.book[destination-1].index;
+			st->second.book[destination].count = st->second.book[destination-1].count;
+			st->second.next[destination].index = st->second.next[destination-1].index;
+			st->second.next[destination].count = st->second.next[destination-1].count;
 		}
 
 		//We also need to update all first-level indexes that pointed into the moved elements
 		//	of the second level.
 
 		for (int i = 0; i < eei_symboltable_total_symbols; ++i)
-			if (st->first.next.indexes[i] >= insertion)
-				st->first.next.indexes[i]++;
+			if (st->first.next[i].index >= insertion)
+				st->first.next[i].index++;
 	}
 
 	//(re)set the index
-	st->first.next.indexes[index->first] = index->second;
-	st->first.next.counts[index->first]++;
+	st->first.next[index->first].index = index->second;
+	st->first.next[index->first].count++;
 	st->used->second_level++;
 
 	//Write the textbook data into the element
-	st->second.book.counts[insertion] = length;
-	st->second.book.indexes[insertion] = book_index;
+	st->second.book[insertion].count = length;
+	st->second.book[insertion].index = book_index;
 
 	//This is a new symbol so it has no third level data
-	st->second.next.counts[insertion] = 0;
+	st->second.next[insertion].count = 0;
 
 	//The caller should set the index once it is knwon
 	index->second = insertion;
@@ -1979,20 +1979,20 @@ ee_symboltable_reply eei_symboltable_add_third(
 
 	//Find the third-level insertion point.
 	const int insertion =
-			(st->second.next.counts[index->second] == 0)
+			(st->second.next[index->second].count == 0)
 
 			//Adding to an empty second-level is trivial: Just use the space at the end
 			? (st->used->third_level)
 
 			//Otherwise add at the end of the existing elements for this second level
-			: (st->second.next.indexes[index->second] + st->second.next.counts[index->second]);
+			: (st->second.next[index->second].index + st->second.next[index->second].count);
 
-	if (st->second.next.counts[index->second] == 0)
+	if (st->second.next[index->second].count == 0)
 		//Only update a new first-level with the index
 		index->third = insertion;
 	else
 		//Save this to allow restoring it later since it might be modified by the index-update loop
-		index->third = st->second.next.indexes[index->second];
+		index->third = st->second.next[index->second].index;
 
 	if (insertion != st->used->third_level)
 	{
@@ -2008,13 +2008,13 @@ ee_symboltable_reply eei_symboltable_add_third(
 		//	of the third level.
 
 		for (int i = 0; i < st->used->second_level; ++i)
-			if (st->second.next.indexes[i] >= insertion)
-				st->second.next.indexes[i]++;
+			if (st->second.next[i].index >= insertion)
+				st->second.next[i].index++;
 	}
 
 	//(re)set the index
-	st->second.next.indexes[index->second] = index->third;
-	st->second.next.counts[index->second]++;
+	st->second.next[index->second].index = index->third;
+	st->second.next[index->second].count++;
 	st->used->third_level++;
 
 	//The caller should fill the data
@@ -3181,8 +3181,7 @@ typedef struct
 	eei_symboltable_usage_data requested;
 
 	//This data is defined directly here since its size is constant
-	eei_symboltable_element_count first_level_indexes[eei_symboltable_total_symbols];
-	eei_symboltable_element_count first_level_counts[eei_symboltable_total_symbols];
+	eei_symboltable_level first_level[eei_symboltable_total_symbols];
 
 	char data[1];
 } eei_symboltable_struct;
@@ -3273,12 +3272,12 @@ const char * eei_symboltable_calculate_offsets(
 	const char * ptr = base;
 
 	//Second level data - realign
-	if (alignof(eei_symboltable_element_count))
-		while ((ptrdiff_t)ptr % alignof(eei_symboltable_element_count))
+	if (alignof(eei_symboltable_level))
+		while ((ptrdiff_t)ptr % alignof(eei_symboltable_level))
 			ptr++;
 
 	offsets->second_level = (ee_memory_size)(ptr - base);
-	ptr += sizeof(eei_symboltable_element_count) * size->second_level * 4;
+	ptr += sizeof(eei_symboltable_level) * size->second_level * 2;
 
 	//Third level data
 	while ((ptrdiff_t)ptr % alignof(eei_symboltable_function_data))
@@ -3318,8 +3317,7 @@ void eei_symboltable_calculate_pointers(
 	//Fill working pointers from the data
 
 	//First level is filled directly
-	pointers->first.next.indexes = full->first_level_indexes;
-	pointers->first.next.counts = full->first_level_counts;
+	pointers->first.next = full->first_level;
 
 	//Fill all counts first
 	pointers->allocated = &full->allocated;
@@ -3328,10 +3326,8 @@ void eei_symboltable_calculate_pointers(
 	char * base = &full->data[0];
 
 	//Second level is daisy chained
-	pointers->second.book.indexes = (eei_symboltable_element_count*)(base + full->offsets.second_level);
-	pointers->second.book.counts = pointers->second.book.indexes + pointers->allocated->second_level;
-	pointers->second.next.indexes = pointers->second.book.counts + pointers->allocated->second_level;
-	pointers->second.next.counts = pointers->second.next.indexes + pointers->allocated->second_level;
+	pointers->second.book = (eei_symboltable_level*)(base + full->offsets.second_level);
+	pointers->second.next = pointers->second.book + pointers->allocated->second_level;
 
 	pointers->third.data = (eei_symboltable_function_data*)(base + full->offsets.third_level);
 	pointers->third.variables = (ee_variable*)(base + full->offsets.variables);
@@ -3711,7 +3707,7 @@ ee_symboltable_reply ee_symboltable_add(
 		full_symboltable->used.textbook = 0;
 
 		for (int i = 0; i < eei_symboltable_total_symbols; ++i)
-			full_symboltable->first_level_counts[i] = 0;
+			full_symboltable->first_level[i].count = 0;
 
 		full_symboltable->header.flags |= eei_symboltable_flag_initialized;
 	}
