@@ -3381,7 +3381,7 @@ void eei_symboltable_fill_memory(eei_symboltable_struct * full_symboltable)
 			+ sizeof(ee_function);
 
 	//Calculate the size we can allocate for all other elements
-	const int totalsize = full_symboltable->header.size - ((const char*)full_symboltable - &full_symboltable->data[0]);
+	const int totalsize = full_symboltable->header.size - (&full_symboltable->data[0] - (const char*)full_symboltable);
 	const int othersize = totalsize	/ (textbookratio+1);
 	const int elements = othersize / element;
 
@@ -3390,7 +3390,7 @@ void eei_symboltable_fill_memory(eei_symboltable_struct * full_symboltable)
 	allocated.third_level = elements;
 	allocated.variables = elements;
 	allocated.functions = elements;
-	allocated.textbook = totalsize - othersize;
+	allocated.textbook = totalsize - (elements+1) * element;
 
 	//Reclaulte the final size needed
 	eei_symboltable_usage_data offsets;
