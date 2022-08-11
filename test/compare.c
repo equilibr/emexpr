@@ -23,7 +23,7 @@ static int compare_overwhelm(ee_element_count arity, const ee_variable_type * ac
 	return 0;
 }
 
-static const double MeasureTime = 0.01;
+static const double MeasureTime = 0.1;
 
 enum
 {
@@ -244,6 +244,7 @@ static const char * eval[] =
 	"|(a,a)",
 	"a|a|a|a|a|a",
 	"a|(a|(a|(a|(a|a))))",
+	"a|a|a|a|a|a|a|a|a|a",
 
 	"%a",
 	"a%a",
@@ -253,6 +254,7 @@ static const char * eval[] =
 	"%(a,a)",
 	"a%a%a%a%a%a",
 	"a%(a%(a%(a%(a%a))))",
+	"a%a%a%a%a%a%a%a%a%a",
 
 	NULL
 };
@@ -262,11 +264,18 @@ void compare()
 	double measurement;
 
 	printf("%20s  ", "-= iter/sec =-");
-	printf("%16s ","direct [M]");
-	printf("%16s ","eval [M]");
-	printf("%16s ","compile [K]");
-	printf("%16s ","full [K]");
+	printf("%11s ","direct [M]");
+	printf("%11s ","symb [K]");
+	printf("%11s ","parse [K]");
+	printf("%11s ","parse [nS]");
+	printf("%11s ","eval [M]");
+	printf("%11s ","eval [nS]");
+	printf("%11s ","delta [nS]");
 	printf("\n");
+
+	//Measure evaluation of an empty expression and use it as a baseline
+	//	for time deltas
+	double empty =1.0e9 /  measure_evaluation(funcData, varData, "");
 
 	for (int i = 0; eval[i]; ++i)
 	{
@@ -274,24 +283,27 @@ void compare()
 		if (i < MeasureCounts)
 		{
 			measurement = measure_direct(direct[i]);
-			printf("%16.3f ", measurement / 1e6);
+			printf("%11.3f ", measurement / 1e6);
 		}
 		else
-			printf("%16s ", " ");
-
-		measurement = measure_evaluation(funcData, varData, eval[i]);
-		printf("%16.3f ", measurement / 1e6);
-
-		measurement = measure_compilation(funcData, varData, eval[i]);
-		printf("%16.0f ", measurement / 1e3);
+			printf("%11s ", " ");
 
 		if (i < 1)
 		{
 			measurement = measure_symbol(funcData, varData);
-			printf("%16.0f ", measurement / 1e3);
+			printf("%11.0f ", measurement / 1e3);
 		}
 		else
-			printf("%16s ", " ");
+			printf("%11s ", " ");
+
+		measurement = measure_compilation(funcData, varData, eval[i]);
+		printf("%11.0f ", measurement / 1e3);
+		printf("%11.0f ", 1.0e9 / measurement);
+
+		measurement = measure_evaluation(funcData, varData, eval[i]);
+		printf("%11.3f ", measurement / 1e6);
+		printf("%11.0f ", 1.0e9 / measurement);
+		printf("%11.0f ", 1.0e9 / measurement - empty);
 
 		printf("\n");
 	}
