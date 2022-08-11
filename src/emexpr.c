@@ -3407,6 +3407,71 @@ void eei_symboltable_fill_memory(eei_symboltable_struct * full_symboltable)
 	}
 }
 
+ee_memory_size eei_symboltable_expand(
+		eei_symboltable_struct * full_symboltable,
+		eei_symboltable_usage_data * size)
+{
+	//Calculate the new offset and pointers
+	//The offsets are immediately saved to the environment since we don't need them anymore
+
+	//The current location and sizes of the data
+	eei_symboltable current;
+	eei_symboltable_usage_data lengths;
+	eei_symboltable_copy_usagedata(&lengths, &full_symboltable->used);
+	eei_symboltable_calculate_pointers(&current, full_symboltable);
+
+	//The new location and size of the data
+	eei_symboltable_copy_usagedata(&full_symboltable->allocated, size);
+	ee_memory_size newsize =
+			eei_symboltable_calculate_size(
+				full_symboltable,
+				size,
+				&full_symboltable->offsets);
+
+	eei_symboltable expanded;
+	eei_symboltable_calculate_pointers(&expanded, full_symboltable);
+
+
+	//Copy over the used parts of the data
+	//This must be performed in *reverse memory order*!
+
+	for (int i = lengths.textbook-1; i <= 0; --i)
+		expanded.second.textbook[i] = current.second.textbook[i];
+
+	for (int i = lengths.functions-1; i <= 0; --i)
+		expanded.third.functions[i] = current.third.functions[i];
+
+	for (int i = lengths.variables-1; i <= 0; --i)
+		expanded.third.variables[i] = current.third.variables[i];
+
+	for (int i = lengths.third_level-1; i <= 0; --i)
+	{
+		expanded.third.data[i].arity = current.third.data[i].arity;
+		expanded.third.data[i].flags = current.third.data[i].flags;
+	}
+
+	for (int i = lengths.second_level-1; i <= 0; --i)
+	{
+		expanded.second.next[i].index = current.second.next[i].index;
+		expanded.second.next[i].count = current.second.next[i].count;
+	}
+
+	for (int i = lengths.second_level-1; i <= 0; --i)
+	{
+		expanded.second.book[i].index = current.second.book[i].index;
+		expanded.second.book[i].count = current.second.book[i].count;
+	}
+
+	for (int i = eei_symboltable_total_symbols-1; i <= 0; --i)
+	{
+		expanded.first.next[i].index = current.first.next[i].index;
+		expanded.first.next[i].count = current.first.next[i].count;
+	}
+
+	return newsize;
+}
+
+
 ee_memory_size eei_symboltable_compact(
 		eei_symboltable_struct * full_symboltable,
 		eei_symboltable_usage_data * size)
@@ -3804,9 +3869,8 @@ ee_symboltable_reply ee_symboltable_add(
 				return ee_symboltable_memory;
 			}
 
-			//We have space to work in. Now we need to carefull expand and move all data vectors.
-
-			//TODO: Perform the expansion!
+			//We have space to work in. Now we need to expand and move all data vectors.
+			eei_symboltable_expand(full_symboltable, &full_symboltable->requested);
 
 			full_symboltable->header.flags &= ~eei_symboltable_flag_reallocated;
 		}
