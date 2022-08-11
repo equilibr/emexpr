@@ -161,6 +161,9 @@ typedef enum
 	//All is well
 	ee_symboltable_ok,
 
+	//Compacted structure can not be modified
+	ee_symboltable_compacted,
+
 	//Not enough memory
 	ee_symboltable_memory,
 

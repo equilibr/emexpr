@@ -3160,6 +3160,9 @@ enum
 
 	//The allocated size was changed and data needs to be moved
 	eei_symboltable_flag_reallocated = 1 << 3,
+
+	//The structure is in compacted form and data can not be added
+	eei_symboltable_flag_compacted = 1 << 4
 };
 
 
@@ -3348,7 +3351,7 @@ int eei_symboltable_calculate_size(
 				full,
 				size);
 
-	return sizeof(eei_symboltable_struct) - 1 + (end - &full->data[0]);
+	return end - (const char*)full;
 }
 
 void eei_symboltable_fill_memory(eei_symboltable_struct * full_symboltable)
@@ -3402,6 +3405,68 @@ void eei_symboltable_fill_memory(eei_symboltable_struct * full_symboltable)
 		eei_symboltable_copy_usagedata(&full_symboltable->allocated, &allocated);
 		eei_symboltable_copy_usagedata(&full_symboltable->offsets, &offsets);
 	}
+}
+
+ee_memory_size eei_symboltable_compact(
+		eei_symboltable_struct * full_symboltable,
+		eei_symboltable_usage_data * size)
+{
+	//Calculate the new offset and pointers
+	//The offsets are immediately saved to the environment since we don't need them anymore
+
+	//The current location of the data
+	eei_symboltable current;
+	eei_symboltable_calculate_pointers(&current, full_symboltable);
+
+	//The new location and size of the data
+	eei_symboltable_copy_usagedata(&full_symboltable->allocated, size);
+	ee_memory_size newsize =
+			eei_symboltable_calculate_size(
+				full_symboltable,
+				size,
+				&full_symboltable->offsets);
+
+	eei_symboltable compacted;
+	eei_symboltable_calculate_pointers(&compacted, full_symboltable);
+
+
+	//Copy over the data
+	//This must be performed in *memory order*!
+
+	for (int i = 0; i < eei_symboltable_total_symbols; ++i)
+	{
+		compacted.first.next[i].count = current.first.next[i].count;
+		compacted.first.next[i].index = current.first.next[i].index;
+	}
+
+	for (int i = 0; i < size->second_level; ++i)
+	{
+		compacted.second.book[i].count = current.second.book[i].count;
+		compacted.second.book[i].index = current.second.book[i].index;
+	}
+
+	for (int i = 0; i < size->second_level; ++i)
+	{
+		compacted.second.next[i].count = current.second.next[i].count;
+		compacted.second.next[i].index = current.second.next[i].index;
+	}
+
+	for (int i = 0; i < size->third_level; ++i)
+	{
+		compacted.third.data[i].flags = current.third.data[i].flags;
+		compacted.third.data[i].arity = current.third.data[i].arity;
+	}
+
+	for (int i = 0; i < size->variables; ++i)
+		compacted.third.variables[i] = current.third.variables[i];
+
+	for (int i = 0; i < size->functions; ++i)
+		compacted.third.functions[i] = current.third.functions[i];
+
+	for (int i = 0; i < size->textbook; ++i)
+		compacted.second.textbook[i] = current.second.textbook[i];
+
+	return newsize;
 }
 
 static inline int eei_symboltable_name_length(const ee_char_type * name)
@@ -3712,104 +3777,136 @@ ee_symboltable_reply ee_symboltable_add(
 		full_symboltable->header.flags |= eei_symboltable_flag_initialized;
 	}
 
-	if (!(full_symboltable->header.flags & eei_symboltable_flag_reallocated))
+	if (full_symboltable->header.flags & eei_symboltable_flag_compacted)
+		//We don't allow modification on compated data even though,
+		//	in the current implementation, this data can still be appended (after expansion)
+		return ee_symboltable_compacted;
+
+	int iterations = 2;
+	while (--iterations)
 	{
-		//There was a memory re-allocation so data must be expanded in memory
-
-		//First we check that the newly allocated memory is of adequate size
-
-		const ee_memory_size newsize =
-				eei_symboltable_calculate_size(
-					full_symboltable,
-					&full_symboltable->requested,
-					NULL);
-
-		if (symboltable->size < newsize)
+		if (full_symboltable->header.flags & eei_symboltable_flag_reallocated)
 		{
-			//There is not enough space, return the actual size needed
-			symboltable->size = newsize;
-			return ee_symboltable_memory;
+			//There was a memory re-allocation so data must be expanded in memory
+
+			//First we check that the newly allocated memory is of adequate size
+
+			const ee_memory_size newsize =
+					eei_symboltable_calculate_size(
+						full_symboltable,
+						&full_symboltable->requested,
+						NULL);
+
+			if (symboltable->size < newsize)
+			{
+				//There is not enough space, return the actual size needed
+				symboltable->size = newsize;
+				return ee_symboltable_memory;
+			}
+
+			//We have space to work in. Now we need to carefull expand and move all data vectors.
+
+			//TODO: Perform the expansion!
+
+			full_symboltable->header.flags &= ~eei_symboltable_flag_reallocated;
 		}
 
-		//We have space to work in. Now we need to carefull expand and move all data vectors.
+		//Adding data
 
-		//TODO: Perform the expansion!
+		eei_symboltable st;
+		eei_symboltable_calculate_pointers(&st, full_symboltable);
 
-		full_symboltable->header.flags &= ~eei_symboltable_flag_reallocated;
-	}
+		//Save the currently used counts so we can compare to it, if needed
+		eei_symboltable_usage_data current_usage;
+		eei_symboltable_copy_usagedata(&current_usage, &full_symboltable->used);
 
-	//Adding data
+		ee_symboltable_reply reply = ee_symboltable_ok;
 
-	eei_symboltable st;
-	eei_symboltable_calculate_pointers(&st, full_symboltable);
-
-	//Save the currently used counts so we can compare to it, if needed
-	eei_symboltable_usage_data current_usage;
-	eei_symboltable_copy_usagedata(&current_usage, &full_symboltable->used);
-
-	ee_symboltable_reply reply = ee_symboltable_ok;
-
-	if (!(full_symboltable->header.flags & eei_symboltable_flag_library))
-	{
-		//The library was not added yet, do it now
-
-		if (EEI_FUNCTION_LIBRARY != NULL)
-			reply = eei_symboltable_add_functions(&st, EEI_FUNCTION_LIBRARY);
-
-		if (reply == ee_symboltable_ok)
-			full_symboltable->header.flags |= eei_symboltable_flag_library;
-	}
-
-	if (functions && (reply == ee_symboltable_ok))
-		reply = eei_symboltable_add_functions(&st, functions);
-
-	if (variables && (reply == ee_symboltable_ok))
-		reply = eei_symboltable_add_variables(&st, variables);
-
-	//If there was a memory error we try to estimate how much was actually needed
-	if (reply == ee_symboltable_memory)
-	{
-		//Calculate the usage for this invocation
-		eei_symboltable_usage_data usage;
-		eei_symboltable_estimate_usage(
-					functions,
-					variables,
-					(full_symboltable->header.flags & eei_symboltable_flag_library),
-					&usage);
-
-		//Play what-if this was all added correctly
-		usage.second_level += current_usage.second_level;
-		usage.third_level += current_usage.third_level;
-		usage.variables += current_usage.variables;
-		usage.functions += current_usage.functions;
-		usage.textbook += current_usage.textbook;
-
-		//Save this for the next invocation when we have the requested memory actually provided
-		eei_symboltable_copy_usagedata(&full_symboltable->requested, &usage);
-		full_symboltable->header.flags |=  eei_symboltable_flag_reallocated;
-
-		//Calculate the size requierements
-		const ee_memory_size newsize =
-				eei_symboltable_calculate_size(
-					full_symboltable,
-					&usage,
-					NULL);
-
-		if (symboltable->size >= newsize)
+		if (!(full_symboltable->header.flags & eei_symboltable_flag_library))
 		{
-			//The data can actually fit in the allocated space, we just need to shuffle things around
-			//This is done by running the re-allocator from here and the adding the data again
-			//Since the symbol table does not actually changes anything when the exactly same
-			//	data is added we don't even need to know at what point the current addition failed.
+			//The library was not added yet, do it now
 
-			//TODO: Implement this so the caller does not has to invoke this function again with same inputs.
+			if (EEI_FUNCTION_LIBRARY != NULL)
+				reply = eei_symboltable_add_functions(&st, EEI_FUNCTION_LIBRARY);
+
+			if (reply == ee_symboltable_ok)
+				full_symboltable->header.flags |= eei_symboltable_flag_library;
 		}
 
-		//Report the needed size
-		symboltable->size = newsize;
+		if (functions && (reply == ee_symboltable_ok))
+			reply = eei_symboltable_add_functions(&st, functions);
+
+		if (variables && (reply == ee_symboltable_ok))
+			reply = eei_symboltable_add_variables(&st, variables);
+
+		//If there was a memory error we try to estimate how much was actually needed
+		if (reply == ee_symboltable_memory)
+		{
+			//Calculate the usage for this invocation
+			eei_symboltable_usage_data usage;
+			eei_symboltable_estimate_usage(
+						functions,
+						variables,
+						(full_symboltable->header.flags & eei_symboltable_flag_library),
+						&usage);
+
+			//Play what-if this was all added correctly
+			usage.second_level += current_usage.second_level;
+			usage.third_level += current_usage.third_level;
+			usage.variables += current_usage.variables;
+			usage.functions += current_usage.functions;
+			usage.textbook += current_usage.textbook;
+
+			//Save this for the next invocation when we have the requested memory actually provided
+			eei_symboltable_copy_usagedata(&full_symboltable->requested, &usage);
+			full_symboltable->header.flags |=  eei_symboltable_flag_reallocated;
+
+			//Calculate the size requierements
+			const ee_memory_size newsize =
+					eei_symboltable_calculate_size(
+						full_symboltable,
+						&usage,
+						NULL);
+
+			if (symboltable->size >= newsize)
+			{
+				//The data can actually fit in the allocated space, we just need to shuffle things around
+				//This is done by running the re-allocator from here and the adding the data again
+				//Since the symbol table does not actually changes anything when the exactly same
+				//	data is added we don't even need to know at what point the current addition failed.
+				continue;
+			}
+			else
+			{
+				//Report the needed size
+				symboltable->size = newsize;
+
+				//Nothing more can be done as the caller must allocate more memory
+				return ee_symboltable_memory;
+			}
+		}
+
+
+		if (reply != ee_symboltable_ok)
+			//There was some error that can not be handled
+			return reply;
+		else
+			//We can proceeed
+			break;
 	}
 
-	return reply;
+	if ((functions == NULL) && (variables == NULL))
+	{
+		//This is a compaction request
+
+		//Compact and update the new size
+		symboltable->size =
+				eei_symboltable_compact(full_symboltable, &full_symboltable->used);
+
+		full_symboltable->header.flags |= eei_symboltable_flag_compacted;
+	}
+
+	return ee_symboltable_ok;
 }
 
 
