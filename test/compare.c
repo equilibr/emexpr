@@ -23,9 +23,10 @@ static int compare_overwhelm(ee_element_count arity, const ee_variable_type * ac
 	return 0;
 }
 
+static const double MeasureTime = 0.01;
+
 enum
 {
-	MeasureTime = 1,
 	MeasureCounts = 3
 };
 
@@ -44,7 +45,7 @@ static long double measure_direct(ee_function f)
 	} while (elapsed < (MeasureTime * CLOCKS_PER_SEC));
 
 	double ips = counts;
-	ips /= (elapsed / CLOCKS_PER_SEC);
+	ips /= (1.0 * elapsed / CLOCKS_PER_SEC);
 
 	return ips;
 }
@@ -100,7 +101,7 @@ static long double measure_evaluation(
 	} while (elapsed < (MeasureTime * CLOCKS_PER_SEC));
 
 	double ips = counts;
-	ips /= (elapsed / CLOCKS_PER_SEC);
+	ips /= (1.0 * elapsed / CLOCKS_PER_SEC);
 
 	return ips;
 }
@@ -156,7 +157,7 @@ static long double measure_compilation(
 	} while (elapsed < (MeasureTime * CLOCKS_PER_SEC));
 
 	double ips = counts;
-	ips /= (elapsed / CLOCKS_PER_SEC);
+	ips /= (1.0 * elapsed / CLOCKS_PER_SEC);
 
 	return ips;
 }
@@ -188,7 +189,7 @@ static long double measure_symbol(
 	} while (elapsed < (MeasureTime * CLOCKS_PER_SEC));
 
 	double ips = counts;
-	ips /= (elapsed / CLOCKS_PER_SEC);
+	ips /= (1.0 * elapsed / CLOCKS_PER_SEC);
 
 	return ips;
 }
@@ -197,7 +198,9 @@ static const ee_symboltable_function funcData[] =
 {
 	{compare_simple,"f_with_long_name",-1,ee_function_flag_anywhere},
 	{compare_simple,"f",-1,ee_function_flag_anywhere},
+	{compare_simple,"|",-1,ee_function_flag_anywhere},
 	{compare_overwhelm,"g",-1,ee_function_flag_anywhere},
+	{compare_overwhelm,"%",-1,ee_function_flag_anywhere},
 	{0,0,0,0}
 };
 
@@ -232,6 +235,25 @@ static const char * eval[] =
 	"a - b",
 	"a = b",
 	"a == b",
+
+	"|a",
+	"a|a",
+	"|a|a",
+	"a||a",
+	"|(a)",
+	"|(a,a)",
+	"a|a|a|a|a|a",
+	"a|(a|(a|(a|(a|a))))",
+
+	"%a",
+	"a%a",
+	"%a%a",
+	"a%%a",
+	"%(a)",
+	"%(a,a)",
+	"a%a%a%a%a%a",
+	"a%(a%(a%(a%(a%a))))",
+
 	NULL
 };
 
