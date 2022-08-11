@@ -78,7 +78,7 @@ static const ee_symboltable_function funcData[] =
 {
 	{mega,"M",1,ee_function_flag_postfix | ee_function_flag_pure},
 	{milli,"m",1, ee_function_flag_postfix | ee_function_flag_pure},
-	{pi, "pi",0,ee_function_flag_prefix | ee_function_flag_static},
+	{pi, "pi",0,ee_function_flag_prefix | ee_function_flag_infix | ee_function_flag_static},
 	{unity,"unity",1,ee_function_flag_infix | ee_function_flag_pure},
 	{arity,"arity",-1,ee_function_flag_infix | ee_function_flag_pure},
 	{acuum, "acuum",-1,ee_function_flag_infix | ee_function_flag_pure},
