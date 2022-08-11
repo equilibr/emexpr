@@ -3148,6 +3148,17 @@ ee_evaluator_reply eei_vm_execute(const eei_vm_environment * vm_environment)
 //External API semi-opaque structures
 //-----------------------------------
 
+enum
+{
+	//The stucture has allocation count
+	eei_symboltable_flag_allocation = 1 << 0,
+
+	//The structure is initialized and can be used
+	eei_symboltable_flag_initialized = 1 << 1,
+
+	//The library symbols are loaded
+	eei_symboltable_flag_library = 1 << 2,
+};
 
 
 //Internal direct data held inside a symbol table data structure
@@ -3159,7 +3170,7 @@ typedef struct
 	eei_symboltable_usage_data offsets;
 
 	//Allocated element counts for each of the items in 'offsets'
-	eei_symboltable_usage_data counts;
+	eei_symboltable_usage_data allocated;
 
 	//Used element counts for each of the items in 'offsets'
 	eei_symboltable_usage_data used;
@@ -3306,7 +3317,7 @@ void eei_symboltable_calculate_pointers(
 	pointers->first.next.counts = full->first_level_counts;
 
 	//Fill all counts first
-	pointers->allocated = &full->counts;
+	pointers->allocated = &full->allocated;
 	eei_symboltable_copy_usagedata(&pointers->used, &full->used);
 
 	char * base = &full->data[0];
@@ -3326,7 +3337,7 @@ void eei_symboltable_calculate_pointers(
 static inline int eei_symboltable_name_length(const ee_char_type * name)
 {
 	const ee_char_type * p = name;
-	while (p++) ;
+	while (*p++) ;
 	return p - name;
 }
 
@@ -3368,6 +3379,33 @@ int eei_symboltable_estimate_variables(const ee_symboltable_variables list, int 
 
 	*textbook += text;
 	return item - list;
+}
+
+void eei_symboltable_estimate_usage(
+		const ee_symboltable_functions functions,
+		const ee_symboltable_variables variables,
+		int library,
+		eei_symboltable_usage_data * usage)
+{
+	int function_count = 0;
+	int variable_count = 0;
+	int textbook = 0;
+
+	if (library && (EEI_FUNCTION_LIBRARY != NULL))
+		//Calculate the size of the library
+		function_count += eei_symboltable_estimate_functions(EEI_FUNCTION_LIBRARY,&textbook);
+
+	if (functions)
+		function_count += eei_symboltable_estimate_functions(functions,&textbook);
+
+	if (variables)
+		variable_count += eei_symboltable_estimate_variables(variables,&textbook);
+
+	usage->second_level = variable_count + function_count;
+	usage->third_level = usage->second_level;
+	usage->variables = variable_count;
+	usage->functions = function_count;
+	usage->textbook = textbook;
 }
 
 ee_symboltable_reply eei_symboltable_add_functions(eei_symboltable * st, const ee_symboltable_functions list)
@@ -3527,40 +3565,81 @@ ee_symboltable_reply ee_symboltable_add(
 	if (symboltable->size <= (ee_memory_size)sizeof(ee_symboltable_header))
 	{
 		//This is a request for a size estimate
-		int function_count = 0;
-		int variable_count = 0;
-		int textbook = 0;
 
-		if (EEI_FUNCTION_LIBRARY != NULL)
-			//Calculate the size of the library
-			function_count += eei_symboltable_estimate_functions(EEI_FUNCTION_LIBRARY,&textbook);
-
-		if (functions)
-			function_count += eei_symboltable_estimate_functions(functions,&textbook);
-
-		if (variables)
-			variable_count += eei_symboltable_estimate_variables(variables,&textbook);
-
-		//Calculate size estimates
-		eei_symboltable_usage_data offsets;
+		//Calculate size requierements
 		eei_symboltable_usage_data usage;
-		usage.second_level = variable_count + function_count;
-		usage.third_level = usage.second_level;
-		usage.variables = variable_count;
-		usage.functions = function_count;
-		usage.textbook = textbook;
-		const char * end = eei_symboltable_calculate_offsets(&offsets,full_symboltable,&usage);
+		eei_symboltable_usage_data offsets;
+		eei_symboltable_estimate_usage(functions, variables, 1, &usage);
+		const char * end =
+				eei_symboltable_calculate_offsets(&offsets, full_symboltable, &usage);
 
-		symboltable->size =
+		const ee_memory_size oldsize = symboltable->size;
+		const ee_memory_size newsize =
 				sizeof(eei_symboltable_struct) - 1 + (end - &full_symboltable->data[0]);
 
-		return ee_symboltable_ok;
+		symboltable->size = newsize;
+
+		if (oldsize >= (ee_memory_size)sizeof(eei_symboltable_struct))
+		{
+			//There is enough space to store the allocations count
+			eei_symboltable_copy_usagedata(&full_symboltable->allocated,&usage);
+			full_symboltable->header.flags |= eei_symboltable_flag_allocation;
+		}
+
+		if (newsize > oldsize)
+			return ee_symboltable_memory;
+		else
+			return ee_symboltable_ok;
 	}
-	else if ((functions == NULL) && (variables == NULL))
+
+	if (symboltable->size < (ee_memory_size)sizeof(eei_symboltable_struct))
+		//Not enough memory to do anything at all
+		return ee_symboltable_memory;
+
+	if (!(full_symboltable->header.flags & eei_symboltable_flag_initialized))
 	{
-		//This is a compation request
-		//Currently not implemented but no harm in calling this
-		return ee_symboltable_ok;
+		//The offset/usage data is not setup
+		//We need to do that before the symbol table can be used at all
+
+		if (!(full_symboltable->header.flags & eei_symboltable_flag_allocation))
+		{
+			//Allocation data was never calculated - do it now
+
+			//Calculate and store the usage data
+			eei_symboltable_estimate_usage(functions, variables, 1, &full_symboltable->allocated);
+			full_symboltable->header.flags |= eei_symboltable_flag_allocation;
+		}
+
+		//Calculate the size requierement and store the offsets
+		const char * end =
+				eei_symboltable_calculate_offsets(
+					&full_symboltable->offsets,
+					full_symboltable,
+					&full_symboltable->allocated);
+
+		const ee_memory_size newsize =
+				sizeof(eei_symboltable_struct) - 1 + (end - &full_symboltable->data[0]);
+
+		//Make sure there is enough space and, if not, report and complain
+		if (symboltable->size < newsize)
+		{
+			symboltable->size = newsize;
+			return ee_symboltable_memory;
+		}
+
+		//Zero out the global usage and first level data
+		//This is enough to mark everything as unused
+
+		full_symboltable->used.second_level = 0;
+		full_symboltable->used.third_level = 0;
+		full_symboltable->used.variables = 0;
+		full_symboltable->used.functions = 0;
+		full_symboltable->used.textbook = 0;
+
+		for (int i = 0; i < eei_symboltable_total_symbols; ++i)
+			full_symboltable->first_level_counts[i] = 0;
+
+		full_symboltable->header.flags |= eei_symboltable_flag_initialized;
 	}
 
 	//Adding data
@@ -3568,10 +3647,9 @@ ee_symboltable_reply ee_symboltable_add(
 	eei_symboltable st;
 	eei_symboltable_calculate_pointers(&st, full_symboltable);
 
-	//Check if the library was not added yet
-	if (!(full_symboltable->header.flags & 1))
+	if (!(full_symboltable->header.flags & eei_symboltable_flag_library))
 	{
-		full_symboltable->header.flags |= 1;
+		//The library was not added yet, do it now
 
 		if (EEI_FUNCTION_LIBRARY != NULL)
 		{
@@ -3579,6 +3657,8 @@ ee_symboltable_reply ee_symboltable_add(
 			if (reply != ee_symboltable_ok)
 				return reply;
 		}
+
+		full_symboltable->header.flags |= eei_symboltable_flag_library;
 	}
 
 	if (functions)

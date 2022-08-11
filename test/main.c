@@ -161,7 +161,6 @@ int test_expression(const char * expression)
 	printf("%20s = ",expression);
 
 	ee_symboltable_add(&global_symboltable.header,funcData, varData);
-	ee_symboltable_add(&global_symboltable.header,NULL,NULL);
 
 	ee_guestimate(expression, &sizes);
 	memcpy(&sizes_guess, &sizes, sizeof(ee_data_size));
