@@ -164,12 +164,6 @@ typedef enum
 	//Not enough memory
 	ee_symboltable_memory,
 
-	//The memory is too fragmented to use
-	ee_symboltable_fragmented,
-
-	//An index is outside the allocated count
-	ee_symboltable_out_of_memory,
-
 	//An index is outside the used count
 	ee_symboltable_out_of_bounds,
 
