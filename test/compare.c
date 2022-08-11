@@ -200,12 +200,37 @@ static long double measure_symbol(
 	return ips;
 }
 
+static int mega(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
+{
+	(void)arity;
+	*result = actuals[0] * 1000;
+	return 0;
+}
+
+static int milli(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
+{
+	(void)arity;
+	*result = actuals[0] / 1000;
+	return 0;
+}
+
+static int pi(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
+{
+	(void)arity;
+	(void)actuals;
+	*result = 3.141592653589;
+	return 0;
+}
+
 
 static const ee_symboltable_function funcData[] =
 {
 	{compare_one,"one",0,ee_function_flag_anywhere | ee_function_flag_static},
 	{compare_unity,"unity",1,ee_function_flag_anywhere | ee_function_flag_pure},
 	{compare_acuum, "acuum",-1,ee_function_flag_anywhere | ee_function_flag_pure},
+	{mega,"M",1,ee_function_flag_postfix | ee_function_flag_pure},
+	{milli,"m",1, ee_function_flag_postfix | ee_function_flag_pure},
+	{pi, "pi",0,ee_function_flag_prefix | ee_function_flag_infix | ee_function_flag_static},
 	{0,0,0,0}
 };
 
