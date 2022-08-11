@@ -1,6 +1,3 @@
-
-
-
 # EmExpr
 
 EmExpr, the Embedded Expression library, is a small, zero-dependency, zero-allocation parser and evaluation engine for mathematical expressions. It is aimed to be used in embedded systems where resources are at a premium and must be tightly controlled.
@@ -59,7 +56,7 @@ By default there are no sanity checks anywhere in the code. It is assumed the pr
 
 ### Expression parser
 
-The parser is implemented as a table-driven, non-recursive, Pratt parser, with support for prefix, infix & postfix operators with controllable precedence.
+The parser is implemented as a table-driven, non-recursive, Pratt parser, with support for prefix, infix & postfix operators with controllable precedence and a single token look-behind.
 
 Being a table-driven parser the parsed language grammar can be easily modified, if needed, without the need to even understand how the code works. For example, changing the precedence of operators is a simple operation of changing the corresponding integers in the table. This also allows for storing the language tables in ROM memory, or another memory bank, if needed, to conserve RAM or speed-up execution using simultaneous memory bank access.
 
@@ -103,17 +100,43 @@ The memory usage of the symbol table processing is hard to calculate in advance.
 
 The space used depends only on the input symbol table and has no dependency on the expressions to be parsed.  Thus, this step can be executed at any time before the actual parsing, including during development on the host machine, saving the resulting data directly into constant storage, such as a ROM or providing it as immediate values inside the source code, or any other method.
 
-As of writing there is no separate API provided for this and it is performed inside the parsing function, every time it is invoked. This also currently requires that the original data is kept around during parsing.
+To process the symbols a single function is presented by the API, `ee_symboltable_add`. It takes a pre-allocated semi-opaque structure, a list of user functions and variables and converts them to a format suitable for the parser.
+
+An example of it's invocation, with a pre-allocated space, that binds a single variable, to be known as `a` inside all parsed expressions, follows:
+
+```C
+ee_variable_type var1;
+static const ee_symboltable_variable varData[] =
+{
+  {&var1, "a"},
+  {NULL,NULL} //End-of-list marker
+};
+
+union
+{
+  ee_symboltable_header header;
+  char data[1024];
+} symboltable;
+
+symboltable.header.flags = 0;
+symboltable.header.size = sizeof(symboltable);
+
+ee_symboltable_add(&symboltable.header, NULL, varData);
+```
+
+Following this call the symbol table can be used with any parser for resolving variables and functions named inside an expression. The `varData` vector, in the example above, can be deleted after the call, since all relevant data is stored, in compact form, inside the symbol table structure.
+
+To further reduce memory usage the `ee_symboltable_add` function can be invoked with empty lists, as in `ee_symboltable_add(&symboltable.header, NULL, NULL)`. This will try and compact the symbol table structure, in place, and will return the new size inside `symboltable.header.size`. The memory can than be reallocated to this, smaller, size.
 
 ### Size estimation
 
-Since there is no way to know in advance, before parsing, how much space will be needed for the evaluation environment, an estimator function can be called. This function is given the actual expression and it fills the environment header with size estimation data.
+Since there is no way to know in advance, before parsing, how much space will be needed for the evaluation environment, an estimator function can be called. This function is given the actual expression and it fills the sizes structure with size estimation data.
 This would look like this:
 
 ```C
-    ee_environment_header header;
-    if (ee_guestimate("40+2",&header))
-        return;//There was some error
+ee_data_size sizes;
+if (ee_guestimate("40+2",&sizes))
+	return;//There was some error
 ```
 
 At this point an adequately sized buffer can be allocated.
@@ -122,26 +145,42 @@ It is entirely possible to just allocate some space and reject all expressions t
 ### Parsing
 
 No matter the strategy, the next step is performing the actual parsing.
-For the example we assume the buffer is pre-allocated to some constant value.
+For the example we assume the buffer is pre-allocated to some constant size.
 
 ```C
-  enum {EnvironmentSize = 64};
-  union
-  {
-     ee_environment_header  header;
-     ee_environment_element data[EnvironmentSize];
-  }  environment;
-  environment.header.size = EnvironmentSize;
-  
-  ee_compilation_data data;
-  const char * expression = "40+2";
-  
-  int result = ee_compile(expression , &environment.header,  &data);
-  if (result)
-    //This can be used to display a specific error message
-    return result;
+enum
+{
+	CompilationSize = 64,
+	EnvironmentSize = 64
+};
+
+union
+{
+	ee_compilation_header header;
+	char data[CompilationSize];
+} compilation;
+compilation.header.size = CompilationSize ;
+
+union
+{
+	ee_environment_header  header;
+	char data[EnvironmentSize];
+} environment;
+environment.header.size = EnvironmentSize;
+
+const char * expression = "40+2";
+
+int result = ee_compile(
+	expression,
+	&sizes, 
+	&symboltable.header, 
+	&compilation.header,
+	&environment.header);
+	  
+if (result)
+	//This can be used to display a specific error message
+	return result;
 ```
-One very important piece of code is left unexplained, the `ee_compilation_data`, it is the input of the symbol table processor. It is extensively discussed as part of the [user interface](#UserInterface). 
 
 ### Evaluation
 
@@ -149,13 +188,13 @@ If the parsing completed without errors the expression can be evaluated.
 Note that, at this point, the only piece of data that we need to keep is the evaluation environment, `environment` (and the `ee_compilation_data`, until that is fixed). All the other data used before, as well as the expression itself, are no longer needed.
 
 ```C
-  //We assume the result of the evaluation is of some interest.
-  ee_variable_type result;
-  
-  int evaluated = ee_evaluate(&environment.header, &result);
-  if (evaluated)
-    //This value can be provided by a user function during evaluation
-    return evaluated;
+//We assume the result of the evaluation is of some interest.
+ee_variable_type result;
+
+int evaluated = ee_evaluate(&environment.header, &result);
+if (evaluated)
+	//This value can be provided by a user function during evaluation
+	return evaluated;
 ```
 
 This step can be executed as many times as needed, interleaved with other executions.
@@ -163,13 +202,13 @@ This step can be executed as many times as needed, interleaved with other execut
 For example, assume there are two expressions, that were parsed beforehand, that are only needed for the side-effects of the user functions they execute. Code like the following could be used to execute them, repeatedly, until one of the user functions returns some non-zero value.
 
 ```C
-  static const char * expr1 = "foo()";
-  static const char * expr1 = "bar()";
+static const char * expr1 = "foo()";
+static const char * expr1 = "bar()";
 
-  //Parsing was done here into env1 & env2
-  
-  ee_variable_type dummy;
-  while (!ee_evaluate(&env1, &dummy) && !ee_evaluate(&env2, &dummy)) ;
+//Parsing was done here into env1 & env2
+
+ee_variable_type dummy;
+while (!ee_evaluate(&env1, &dummy) && !ee_evaluate(&env2, &dummy)) ;
 ```
 
 ## <a name="UserInterface"></a> User interface
@@ -180,11 +219,11 @@ For the evaluation engine both variables and functions are represented using poi
 
 To conserve memory the parser only stores pointers to those variables and functions that are actually referenced in the expression. This allows for providing to the parser a list of all variables and functions that **might** be used by an expression, e.g. all mathematical functions, without the need to know in advance which of them will actually be used.
 
-Information about the variables and functions is currently provided to the parser using the `ee_compilation_data` structure. See the explanation about the [symbol table](#SymbolTableProcessing) for more details.
+Information about the variables and functions is provided to the parser using the [symbol table](#SymbolTableProcessing).
 
 ### Variables
 
-Variables are provided to the parser using the `variables` field inside the `ee_compilation_data` structure.
+Variables are provided to the parser using the `variables` parameter of the `ee_symboltable_add` function.
 For each variable its' address and the name by which it will be known in the expression is provided.
 
 All bound variables must be of a single type, `ee_variable_type`. The value of the variables can be read at any time, in any order, by the execution engine. While inside a user function the execution engine is stopped and, thus, will not access any variables (although other execution engines might).
@@ -193,19 +232,26 @@ Since no synchronization is used for variable access the user must make sure the
 
 Following is a diluted example of how to bind two variables to the parser.
 ```C
-  ee_variable_type var1, var2;
-  
-  ee_variable const varData[] = {&var1,  &var2};
-  const char * varNames[] = {"a", "b"};
-  ee_compilation_data bindings = { .variables = { varData, {varNames, 2} } };
-  
-  //Inside an expression variables are accessed directly by the bound name.
-  ee_compile("a + b", &environment, &bindings);
-  ```
+ee_variable_type var1, var2;
+
+static const ee_symboltable_variable varData[] =
+{
+	{&var1, "a"},
+	{&var1, "b"},
+	{NULL,NULL} //End-of-list marker
+};
+
+//Allocation of the symbol table structure goes here...
+
+ee_symboltable_add(&symboltable.header, NULL, varData);
+
+//Inside an expression variables are accessed directly by the bound name.
+ee_compile("a + b", ...&symboltable.header...);
+```
 
 ### Functions
 
-Functions are provided to the parser using the `functions` field inside the `ee_compilation_data` structure.
+Functions are provided to the parser using the `functions` parameter inside the `ee_symboltable_add` function.
 For each function its' address, arity (number of accepted parameters), several flags and the name by which it will be known in the expression is provided.
 
 All functions must be of the single type, `ee_function`. The functions can be called at any time, in any order, by the execution engine. Each function can accept zero or more parameters and returns a value, that is used in its place in the expression, and a result code.
@@ -217,7 +263,7 @@ Since a single user function can be used to implement several operations and, al
 
 Functions that accept zero parameters can be invoked (if not disabled by a compile-time option) using the variable access syntax, without the `()` parenthesis denoting a function call. This allows those functions to act as variables, letting for things such as externally provided constants or dynamically generated values.
 
-For detailed explanation see the comment for the `ee_function` definition and the the `arity` field of the `ee_compilation_data_function` structure.
+For detailed explanation see the comment for the `ee_function` definition, the `arity` field of the `ee_symboltable_function` structure and the comment in the `ee_function_flag` enumeration.
 
 Following is a diluted example of how to use a single function to implement two operators.
 
@@ -238,17 +284,20 @@ int subneg(int arity, const  ee_variable_type  *  actuals, ee_variable result)
   }
 }
 
-  //Somewhere inside the parsing function...
-  
-  ee_compilation_data_function  funcData[]  =  {
-    {subneg,1},
-    {subneg,2}
-  };
-  const  char  *  funcNames[]  =  {"-","-"};
+//Somewhere inside the initialization function...
 
-  ee_compilation_data bindings = { .functions= { funcData, {funcNames, 2} } };
+static const ee_symboltable_function funcData[] =
+{
+  {subneg,"-",1,ee_function_flag_prefix | ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
+  {subneg,"-",2,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
+  {0,0,0,0}
+};
+
+ee_symboltable_add(&symboltable.header, funcData, NULL);
+
+//And then inside the parsing function...
   
-  ee_compile("-1 - 1", &environment, &bindings);
+ee_compile("-1 - 1", ...&symboltable.header...);
 ```
 
 If a function is bound only once, using a non-negative arity, the runtime check for arity can be omitted since the parser makes sure the correct number of parameters is always provided upon invocation, e.g.
@@ -261,16 +310,19 @@ int sum(int arity, const  ee_variable_type  *  actuals, ee_variable result)
   return 0;
 }
 
-  //Somewhere inside the parsing function...
-  
-  ee_compilation_data_function  funcData[]  =  {
-    {sum,2}
-  };
-  const  char  *  funcNames[]  =  {"+"};
+//Somewhere inside the initialization function...
 
-  ee_compilation_data bindings = { .functions= { funcData, {funcNames, 1} } };
+static const ee_symboltable_function funcData[] =
+{
+  {sum,"+",2,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
+  {0,0,0,0}  
+};
+
+ee_symboltable_add(&symboltable.header, funcData, NULL);
+
+//Somewhere inside the parsing function...
   
-  ee_compile("1 + 1", &environment, &bindings);
+ee_compile("1 + 1", ...&symboltable.header...);
 ```
 
 ## Syntax
@@ -418,7 +470,7 @@ For example, given a function named `x` which accepts zero parameters, it can be
 When a postfix operator is exactly the name of a user function with an arity of 1 that function is used for the operator. The default grammar does not support any other postfix operators.
 
 For example, this form can be used for implementing SI multipliers.
-Given user functions such as `K` and `M` that take a single parameter and multiply it by the correct power of 10, the expression `1 M - 900 K' should evaluate to 100,000.
+Given user functions such as `K` and `M` that take a single parameter and multiply it by the correct power of 10, the expression `1 M - 900 K` should evaluate to 100,000.
 
 ####  <a name="PrefixAsFunctions"></a>Prefix operators as functions
 
@@ -495,8 +547,8 @@ To allow for more informative feedback to the user who parses expressions, conve
 For users who want to *just use* the library a function is provided that takes an expression as input and returns the result as output. This function has a simplified API for variable binding and it includes the default math functions in the evaluation.
 
 ```C
-    double myVar = 0;
-    double result = eelib_execute("cos(2 * PI * phi)", "phi", &myVar);
+double myVar = 0;
+double result = eelib_execute("cos(2 * PI * phi)", "phi", &myVar);
 ```
 For developers who wish to pre-process symbol tables that are known at compile time the appropriate facilities are provided as separate tools in their own source file.
 
@@ -527,15 +579,7 @@ Allow for separating the two memory locations, same as can be done for the runti
 
 ### Name lookup
 
-Allow using special user provided functions for variable and function name lookup during parsing instead of the data directly supplied by the symbol table. This should also be implemented to facilitate a simple switching to a better symbol table provider that should be supplied in an supporting library.
-
-This connects directly to the following item.
-
-### Pre-process parser data
-
-Since the data supplied to the parser, the variables and user functions list, rarely, if never, changes between calls to the parser it would be highly beneficial to perform some pre-processing on this data to convert it to a format better suited for how the parser would operate on it.
-
-This connects directly to the previous item.
+Allow using special user provided functions for variable and function name lookup during parsing instead of the symbol table. This should also be implemented to facilitate a simple switching to a better symbol table provider that should be supplied in an supporting library.
 
 ### Environment sharing
 
