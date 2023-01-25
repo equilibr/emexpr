@@ -46,6 +46,18 @@
 #	define EEI_FUNCTION_LIBRARY eei_operators_library
 #endif
 
+#if defined(EE_USER_VARIBALE_LOAD)
+#	define EEI_VARIABLE_LOAD EE_USER_VARIBALE_LOAD
+#else
+#	define EEI_VARIABLE_LOAD(dst,src) *dst = *src;
+#endif
+
+#if defined(EE_USER_VARIBALE_STORE)
+#	define EEI_VARIABLE_STORE EE_USER_VARIBALE_STORE
+#else
+#	define EEI_VARIABLE_STORE(dst,src) *dst = *src;
+#endif
+
 //Default implementations of user modifiable items
 //------------------------------------------------
 
@@ -3032,11 +3044,12 @@ ee_evaluator_reply eei_vm_execute(const eei_vm_environment * vm_environment)
 				break;
 
 			case eei_vm_insturction_variable:
+				//Use a user-modifiable load.
+				//At this point the destination holds garbage and can be safely ignored.
 				//The variables table holds pointers to the variables
 				//	so the requested index needs to be dereferenced to access
 				//	the actual user variable.
-				*rt.stack_top++ =
-						*vm_environment->variables[rt.accumulator];
+				EEI_VARIABLE_LOAD(rt.stack_top++, vm_environment->variables[rt.accumulator]);
 
 				//Clear the accumulator in preparation for the next instruction
 				rt.accumulator = 0;
@@ -3119,11 +3132,12 @@ ee_evaluator_reply eei_vm_execute(const eei_vm_environment * vm_environment)
 			}
 
 			case eei_vm_insturction_store:
+				//Use a user-modifiable store.
+				//After the store the source is popped of the stack and no longer used.
 				//The variables table holds pointers to the variables
 				//	so the requested index needs to be dereferenced to access
 				//	the actual user variable.
-				*vm_environment->variables[rt.accumulator] =
-						*--rt.stack_top;
+				EEI_VARIABLE_STORE(vm_environment->variables[rt.accumulator], --rt.stack_top);
 
 				//Clear the accumulator in preparation for the next instruction
 				rt.accumulator = 0;
@@ -4079,9 +4093,9 @@ ee_parser_reply ee_compile(
 	parser.vm.max.instructions = size->instructions;
 	//Reset the stack info since the parser will count the actual stack usage
 	parser.vm.max.stack = 0;
-	//Use the arity instruction as initial value since
+	//Use the immediate instruction as initial value since
 	//	it never can be the last instruction emmited under normal circunstances
-	parser.vm.last_instruction = eei_vm_insturction_arity;
+	parser.vm.last_instruction = eei_vm_insturction_immediate;
 
 
 	//Calculate the VM tables memory locations
