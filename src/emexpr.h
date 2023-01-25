@@ -198,14 +198,21 @@ typedef enum
 	//A generic, unspedicied, error
 	ee_parser_error,
 
+	//The expression will not return a result
+	//	although one is expected.
+	ee_parser_noresult,
+
 	//Generic stack related error
 	ee_parser_stack_error,
 
 	//Algorithmic error causing a prematurely empty stack
 	ee_parser_stack_underflow,
 
+	//Algorithmic error that would result in runtime stack underflow
+	ee_parser_stack_runtime_underflow,
+
 	//A general memory problem
-	//All enums up to ee_parser_expression indicate that
+	//All enums up to ee_parser_binding indicate that
 	//	the expression was too complex for the allocated memory.
 	ee_parser_memory,
 
@@ -223,6 +230,11 @@ typedef enum
 
 	//Run out of functions space
 	ee_parser_functions_overflow,
+
+	//A general problem with the binding
+	//All enums up to ee_parser_expression indicate a problem with
+	//	a variable or function binding.
+	ee_parser_binding,
 
 	//A variable named by the expression is not provided
 	ee_parser_unknown_variable,

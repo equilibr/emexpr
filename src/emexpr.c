@@ -49,13 +49,13 @@
 #if defined(EE_USER_VARIBALE_LOAD)
 #	define EEI_VARIABLE_LOAD EE_USER_VARIBALE_LOAD
 #else
-#	define EEI_VARIABLE_LOAD(dst,src) *dst = *src;
+#	define EEI_VARIABLE_LOAD(dst,src) *dst = *src
 #endif
 
 #if defined(EE_USER_VARIBALE_STORE)
 #	define EEI_VARIABLE_STORE EE_USER_VARIBALE_STORE
 #else
-#	define EEI_VARIABLE_STORE(dst,src) *dst = *src;
+#	define EEI_VARIABLE_STORE(dst,src) *dst = *src
 #endif
 
 //Default implementations of user modifiable items
@@ -1238,9 +1238,6 @@ typedef struct
 	//Currently used size for each datum
 	eei_vmmake_counters current;
 
-	//The last instruction that was emmited
-	eei_vm_bytecode last_instruction;
-
 } eei_vmmake_environment;
 
 ee_parser_reply eei_vmmake_append_instruction(
@@ -1277,8 +1274,6 @@ ee_parser_reply eei_vmmake_append_instruction(
 			((immediate & eei_vm_mask_immediate_shifted)
 			<< eei_vm_immediate_shift)
 			| instruction;
-
-	vm->last_instruction = instruction;
 
 	return ee_parser_ok;
 }
@@ -1363,7 +1358,7 @@ ee_parser_reply eei_vmmake_execute_functions(
 
 	if (index == vm->current.functions)
 	{
-		//Nothing found, we need to add a new constant to the table
+		//Nothing found, we need to add a new function to the table
 
 		if (vm->current.functions >= vm->max.functions)
 			return ee_parser_functions_overflow;
@@ -1373,6 +1368,9 @@ ee_parser_reply eei_vmmake_execute_functions(
 	}
 
 	//Update stack usage
+	if ((vm->current.stack + 1) < arity)
+		return ee_parser_stack_runtime_underflow;
+
 	vm->current.stack += 1 - arity;
 	if (vm->max.stack < vm->current.stack)
 		vm->max.stack = vm->current.stack;
@@ -4093,10 +4091,6 @@ ee_parser_reply ee_compile(
 	parser.vm.max.instructions = size->instructions;
 	//Reset the stack info since the parser will count the actual stack usage
 	parser.vm.max.stack = 0;
-	//Use the immediate instruction as initial value since
-	//	it never can be the last instruction emmited under normal circunstances
-	parser.vm.last_instruction = eei_vm_insturction_immediate;
-
 
 	//Calculate the VM tables memory locations
 	eei_environment_calculate_offsets(&full_env->offsets,(char *)&full_env->data[0],size);
@@ -4133,12 +4127,27 @@ ee_parser_reply ee_compile(
 	eei_environment_compact(full_env, size, &parser);
 	eei_guestimate_calculate_sizes(size);
 
-	if ((parser.status == ee_parser_ok) && (parser.vm.current.instructions == 0))
-		compilation->reply = ee_parser_empty;
-	else if ((parser.status == ee_parser_ok) && (parser.vm.last_instruction == eei_vm_insturction_store))
-		compilation->reply = ee_parser_store;
-	else
-		compilation->reply = parser.status;
+	compilation->reply = parser.status;
+
+	//Detect special conditions on correctly parsed code
+	if (parser.status == ee_parser_ok)
+	{
+		if (parser.vm.current.instructions == 0)
+			//No instructions were generated
+			compilation->reply = ee_parser_empty;
+		else if (parser.vm.current.stack == 0)
+		{
+			//The runtime variable stack would be empty after evaluation
+
+			if (parser.vm.max.stack > 0)
+				//The stack had data that was (most likely) stored
+				compilation->reply = ee_parser_store;
+			else
+				//The stack never had any data, thus surely none was stored,
+				//	and this is an actual error.
+				compilation->reply = ee_parser_noresult;
+		}
+	}
 
 	compilation->error_token_start = &parser.expression[parser.error_token.text.start];
 	compilation->error_token_end = &parser.expression[parser.error_token.text.end];
