@@ -3946,8 +3946,8 @@ ee_symboltable_reply ee_symboltable_add(
 
 			if (symboltable->size >= newsize)
 			{
-				//The data can actually fit in the allocated space, we just need to shuffle things around
-				//This is done by running the re-allocator from here and the adding the data again
+				//The data can actually fit in the allocated space, we just need to shuffle things around.
+				//This is done by running the re-allocator from here and then adding the data again.
 				//Since the symbol table does not actually changes anything when the exactly same
 				//	data is added we don't even need to know at what point the current addition failed.
 				continue;
