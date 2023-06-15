@@ -1154,9 +1154,10 @@ ee_symboltable_reply ee_symboltable_add(
 {
 	eei_symboltable_struct * full_symboltable = (eei_symboltable_struct *)symboltable;
 
-	if (symboltable->size <= (ee_memory_size)sizeof(ee_symboltable_header))
+	if (symboltable->size <= (ee_memory_size)sizeof(eei_symboltable_struct))
 	{
-		//This is a request for a size estimate
+		//Not enough memory to do anything at all.
+		//Treat this as a request for a size estimate.
 
 		//Calculate size requierements
 		eei_symboltable_usage_data usage;
@@ -1165,13 +1166,6 @@ ee_symboltable_reply ee_symboltable_add(
 		symboltable->size =
 				eei_symboltable_calculate_size(full_symboltable, &usage, NULL);
 
-		return ee_symboltable_memory;
-	}
-
-	if (symboltable->size < (ee_memory_size)sizeof(eei_symboltable_struct))
-	{
-		//Not enough memory to do anything at all
-		symboltable->size = sizeof(eei_symboltable_struct);
 		return ee_symboltable_memory;
 	}
 
