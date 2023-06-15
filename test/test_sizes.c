@@ -2,7 +2,7 @@
 #include <string.h>
 
 #include "src/emexpr.h"
-#include "src/eelib/errors.h"
+#include "extra/errors.h"
 
 //Globally allocated data pools
 enum { pool_bytes = 10240 };

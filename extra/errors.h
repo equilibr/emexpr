@@ -13,7 +13,7 @@
 extern "C" {
 #endif
 
-#include "../emexpr.h"
+#include "../src/emexpr.h"
 
 const char * eelib_compile_status_string_short(ee_parser_reply reply);
 const char * eelib_compile_status_string_long(ee_parser_reply reply);
