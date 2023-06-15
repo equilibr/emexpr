@@ -38,11 +38,8 @@ typedef struct
 	//third.data
 	ee_memory_size third_level;
 
-	//third.variables
-	ee_memory_size variables;
-
-	//third.functions
-	ee_memory_size functions;
+	//third.locations
+	ee_memory_size locations;
 
 	//second.textbook
 	ee_memory_size textbook;
@@ -87,20 +84,23 @@ typedef struct
 	eei_symboltable_level * next;
 } eei_symboltable_second_level;
 
+typedef union
+{
+	//A bound variable
+	ee_variable variable;
+
+	//A user-functions
+	ee_function function;
+} eei_symboltable_location;
+
 typedef struct
 {
 	//The arity/flag combinations for a samely-named function.
 	//A flag of ee_function_flag_invalid denotes a variable.
 	eei_symboltable_function_data * data;
 
-	//For each element, the count of function/variable datums before it
-	//	is the index into the appropriate arrays where the actual data pointers are stored
-
-	//The bound variables
-	ee_variable * variables;
-
-	//The user-functions
-	ee_function * functions;
+	//Locations in memory of the variable/function
+	eei_symboltable_location * locations;
 } eei_symboltable_third_level;
 
 typedef struct

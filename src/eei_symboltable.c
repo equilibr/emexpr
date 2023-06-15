@@ -32,17 +32,13 @@
 	The third level link holds the start index, at the third level, and a count of consecutive elements
 	 that hold variables & functions for the current identifier.
 
-	At the third level there are three vectors, one holding the flags, one the varaibles and one the functions.
-	The vector linked from the second level is the flags vector.
-	For each element in the flags vector there is a corresponding element in *either* the variables or the function vectors.
-	To find the index into the variables/functions vectors corresponding to some element in the flags vector,
-	 the flags vector should be scanned from its start and the number of occurence for the appropriate flags counted.
+	At the third level there are two vectors, one holding the flags, and the other locations of the varaibles/functions.
+	For each element in the flags vector there is a corresponding element in locations vector at the same index.
 
 	Notes and TODO:
 
-	The current design of the third level was intened to save memory for systems where the pointers to data & code have different lengths.
-	This comes at a great expence of processing thus it might be feasible to consolidate them into a single vector matching the flags.
-	On the other hand if compression is to be utilized keeping the data separate should provide a benefit since memory locations of
+	The current design of the third level assumes nothing about pointer sizes.
+	If compression is to be utilized keeping the data separate could provide a benefit since memory locations of
 	 variables and code are, usually, clumped into two separate locations.
 
 	When storing varaibles the flags vector is wasted, given most its data is irrelevant.
@@ -371,20 +367,7 @@ ee_symboltable_reply eei_symboltable_get_variable(
 		return ee_symboltable_no_type;
 
 	index->third = index3;
-
-	//Find the index into the final vector
-	int accumulator = 0;
-	for (int i = 0; i < index3; ++i)
-		accumulator +=
-				(st->third.data[i].flags == ee_function_flag_invalid)
-				? 1
-				: 0;
-
-	if (accumulator >= st->used->variables)
-		//Something went terribly wrong!
-		return ee_symboltable_out_of_bounds;
-
-	index->data = accumulator;
+	index->data = index3;
 	return ee_symboltable_ok;
 }
 
@@ -455,20 +438,7 @@ ee_symboltable_reply eei_symboltable_get_function(
 		return seen_function ? ee_symboltable_filtered : ee_symboltable_no_type;
 
 	index->third = index3;
-
-	//Find the index into the final vector
-	int accumulator = 0;
-	for (int i = 0; i < index3; ++i)
-		accumulator +=
-				(st->third.data[i].flags != ee_function_flag_invalid)
-				? 1
-				: 0;
-
-	if (accumulator >= st->used->functions)
-		//Something went terribly wrong!
-		return ee_symboltable_out_of_bounds;
-
-	index->data = accumulator;
+	index->data = index3;
 	return ee_symboltable_ok;
 }
 
@@ -698,6 +668,11 @@ ee_symboltable_reply eei_symboltable_add_third(
 		{
 			st->third.data[destination].flags = st->third.data[destination-1].flags;
 			st->third.data[destination].arity = st->third.data[destination-1].arity;
+
+			if (st->third.data[destination-1].flags == ee_function_flag_invalid)
+				st->third.locations[destination].variable = st->third.locations[destination-1].variable;
+			else
+				st->third.locations[destination].function = st->third.locations[destination-1].function;
 		}
 
 		//We also need to update all second-level indexes that pointed into the moved elements
@@ -735,14 +710,14 @@ ee_symboltable_reply eei_symboltable_add_variable(
 	 //If so the existing value will simply be re-bound to the new variable.
 	 if (reply == ee_symboltable_ok)
 	 {
-		 st->third.variables[index.data] = item;
+		 st->third.locations[index.data].variable = item;
 		 return ee_symboltable_ok;
 	 }
 
 	 //This is new data that needs to be added
 
 	 //Make sure there is space in the data vector
-	 if (st->used->variables >= st->allocated->variables)
+	 if (st->used->locations >= st->allocated->locations)
 		 return ee_symboltable_memory;
 
 	 //Add third-level data for a variable
@@ -753,32 +728,10 @@ ee_symboltable_reply eei_symboltable_add_variable(
 	 //Write the data into the third-level
 	 st->third.data[index.third].flags = ee_function_flag_invalid;
 	 st->third.data[index.third].arity = 0;
+	 index.data = index.third;
 
-	 //Find the index for the new item
-	 {
-		 int accumulator = 0;
-		 for (int i = 0; i < index.third; ++i)
-			 accumulator +=
-					 (st->third.data[i].flags == ee_function_flag_invalid)
-					 ? 1
-					 : 0;
-
-		 if (accumulator > st->used->variables)
-			 //Something went terribly wrong!
-			 return ee_symboltable_out_of_bounds;
-
-		 index.data = accumulator;
-	 }
-
-	 if (index.data < st->used->variables)
-	 {
-		 //We need to move everything to make space for the new data
-		 for (int destination = st->used->variables; destination > index.data; --destination)
-			 st->third.variables[destination] = st->third.variables[destination-1];
-	 }
-
-	 st->used->variables++;
-	 st->third.variables[index.data] = item;
+	 st->used->locations++;
+	 st->third.locations[index.data].variable = item;
 	 return ee_symboltable_ok;
  }
 
@@ -800,14 +753,14 @@ ee_symboltable_reply eei_symboltable_add_function(
 	 //If so the existing function will simply be overwritten with the new one.
 	 if (reply == ee_symboltable_ok)
 	 {
-		 st->third.functions[index.data] = item;
+		 st->third.locations[index.data].function = item;
 		 return ee_symboltable_ok;
 	 }
 
 	 //This is new data that needs to be added
 
 	 //Make sure there is space in the data vector
-	 if (st->used->functions >= st->allocated->functions)
+	 if (st->used->locations >= st->allocated->locations)
 		 return ee_symboltable_memory;
 
 	 //Add third-level data for a variable
@@ -818,32 +771,10 @@ ee_symboltable_reply eei_symboltable_add_function(
 	 //Write the data into the third-level
 	 st->third.data[index.third].flags = flags;
 	 st->third.data[index.third].arity = arity;
+	 index.data = index.third;
 
-	 //Find the index for the new item
-	 {
-		 int accumulator = 0;
-		 for (int i = 0; i < index.third; ++i)
-			 accumulator +=
-					 (st->third.data[i].flags != ee_function_flag_invalid)
-					 ? 1
-					 : 0;
-
-		 if (accumulator > st->used->functions)
-			 //Something went terribly wrong!
-			 return ee_symboltable_out_of_bounds;
-
-		 index.data = accumulator;
-	 }
-
-	 if (index.data < st->used->functions)
-	 {
-		 //We need to move everything to make space for the new data
-		 for (int destination = st->used->functions; destination > index.data; --destination)
-			 st->third.functions[destination] = st->third.functions[destination-1];
-	 }
-
-	 st->used->functions++;
-	 st->third.functions[index.data] = item;
+	 st->used->locations++;
+	 st->third.locations[index.data].function = item;
 	 return ee_symboltable_ok;
  }
 
@@ -882,8 +813,7 @@ void eei_symboltable_copy_usagedata(
 {
 	dst->second_level = src->second_level;
 	dst->third_level = src->third_level;
-	dst->variables = src->variables;
-	dst->functions = src->functions;
+	dst->locations = src->locations;
 	dst->textbook = src->textbook;
 }
 
@@ -912,19 +842,12 @@ const char * eei_symboltable_calculate_offsets(
 	offsets->third_level = (ee_memory_size)(ptr - base);
 	ptr += sizeof(eei_symboltable_function_data) * size->third_level;
 
-	//Variables
-	while ((ptrdiff_t)ptr % alignof(ee_variable))
+	//Locations
+	while ((ptrdiff_t)ptr % alignof(eei_symboltable_location))
 		ptr++;
 
-	offsets->variables = (ee_memory_size)(ptr - base);
-	ptr += sizeof(ee_variable) * size->variables;
-
-	//Functions
-	while ((ptrdiff_t)ptr % alignof(ee_function))
-		ptr++;
-
-	offsets->functions = (ee_memory_size)(ptr - base);
-	ptr += sizeof(ee_function) * size->functions;
+	offsets->locations = (ee_memory_size)(ptr - base);
+	ptr += sizeof(eei_symboltable_location) * size->locations;
 
 	//Textbook
 	while ((ptrdiff_t)ptr % alignof(ee_char_type))
@@ -956,8 +879,7 @@ void eei_symboltable_calculate_pointers(
 	pointers->second.next = pointers->second.book + pointers->allocated->second_level;
 
 	pointers->third.data = (eei_symboltable_function_data*)(base + full->offsets.third_level);
-	pointers->third.variables = (ee_variable*)(base + full->offsets.variables);
-	pointers->third.functions = (ee_function*)(base + full->offsets.functions);
+	pointers->third.locations = (eei_symboltable_location*)(base + full->offsets.locations);
 	pointers->second.textbook = (ee_char_type*)(base + full->offsets.textbook);
 }
 
@@ -984,8 +906,7 @@ void eei_symboltable_fill_memory(eei_symboltable_struct * full_symboltable)
 	const int others =
 			full_symboltable->allocated.second_level * sizeof(eei_symboltable_element_count) * 4
 			+ full_symboltable->allocated.third_level * sizeof(eei_symboltable_function_data)
-			+ full_symboltable->allocated.variables * sizeof(ee_variable)
-			+ full_symboltable->allocated.functions * sizeof(ee_function);
+			+ full_symboltable->allocated.locations * sizeof(eei_symboltable_location);
 
 	//Always allocate *at least* as much space for the textbook as all other data
 	int textbookratio = 1;
@@ -1010,8 +931,7 @@ void eei_symboltable_fill_memory(eei_symboltable_struct * full_symboltable)
 	eei_symboltable_usage_data allocated;
 	allocated.second_level = elements;
 	allocated.third_level = elements;
-	allocated.variables = elements;
-	allocated.functions = elements;
+	allocated.locations = elements;
 	allocated.textbook = totalsize - (elements+1) * element;
 
 	//Reclaulte the final size needed
@@ -1061,11 +981,15 @@ ee_memory_size eei_symboltable_expand(
 	for (int i = lengths.textbook-1; i <= 0; --i)
 		expanded.second.textbook[i] = current.second.textbook[i];
 
-	for (int i = lengths.functions-1; i <= 0; --i)
-		expanded.third.functions[i] = current.third.functions[i];
-
-	for (int i = lengths.variables-1; i <= 0; --i)
-		expanded.third.variables[i] = current.third.variables[i];
+	for (int i = lengths.third_level-1; i <= 0; --i)
+	{
+		//Copy using the correct field access, as demanded by the standard
+		//Using the "current" flags, since they were not yet moved
+		if (current.third.data[i].flags == ee_function_flag_invalid)
+			expanded.third.locations[i].variable = current.third.locations[i].variable;
+		else
+			expanded.third.locations[i].function = current.third.locations[i].function;
+	}
 
 	for (int i = lengths.third_level-1; i <= 0; --i)
 	{
@@ -1145,11 +1069,15 @@ ee_memory_size eei_symboltable_compact(
 		compacted.third.data[i].arity = current.third.data[i].arity;
 	}
 
-	for (int i = 0; i < size->variables; ++i)
-		compacted.third.variables[i] = current.third.variables[i];
-
-	for (int i = 0; i < size->functions; ++i)
-		compacted.third.functions[i] = current.third.functions[i];
+	for (int i = 0; i < size->third_level; ++i)
+	{
+		//Copy using the correct field access, as demanded by the standard
+		//Using the "compacted" flags since they were already moved
+		if (compacted.third.data[i].flags == ee_function_flag_invalid)
+			compacted.third.locations[i].variable = current.third.locations[i].variable;
+		else
+			compacted.third.locations[i].function = current.third.locations[i].function;
+	}
 
 	for (int i = 0; i < size->textbook; ++i)
 		compacted.second.textbook[i] = current.second.textbook[i];
@@ -1226,8 +1154,7 @@ void eei_symboltable_estimate_usage(
 
 	usage->second_level = variable_count + function_count;
 	usage->third_level = usage->second_level;
-	usage->variables = variable_count;
-	usage->functions = function_count;
+	usage->locations = usage->third_level;
 	usage->textbook = textbook;
 }
 
@@ -1362,8 +1289,7 @@ ee_symboltable_reply ee_symboltable_add(
 
 		full_symboltable->used.second_level = 0;
 		full_symboltable->used.third_level = 0;
-		full_symboltable->used.variables = 0;
-		full_symboltable->used.functions = 0;
+		full_symboltable->used.locations = 0;
 		full_symboltable->used.textbook = 0;
 
 		for (int i = 0; i < eei_symboltable_total_symbols; ++i)
@@ -1447,8 +1373,6 @@ ee_symboltable_reply ee_symboltable_add(
 			//Play what-if this was all added correctly
 			usage.second_level += current_usage.second_level;
 			usage.third_level += current_usage.third_level;
-			usage.variables += current_usage.variables;
-			usage.functions += current_usage.functions;
 			usage.textbook += current_usage.textbook;
 
 			//Save this for the next invocation when we have the requested memory actually provided

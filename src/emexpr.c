@@ -1437,7 +1437,7 @@ static inline ee_variable_type * eei_parse_symbols_get_variable_from_index(
 		const eei_symboltable_index * index)
 {
 	if (index->data >= 0)
-		return parser->symboltable.third.variables[index->data];
+		return parser->symboltable.third.locations[index->data].variable;
 	else
 		return NULL;
 }
@@ -1447,7 +1447,7 @@ static inline ee_function eei_parse_symbols_get_function_from_index(
 		const eei_symboltable_index * index)
 {
 	if (index->data >= 0)
-		return parser->symboltable.third.functions[index->data];
+		return parser->symboltable.third.locations[index->data].function;
 	else
 		return NULL;
 }
