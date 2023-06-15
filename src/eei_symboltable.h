@@ -155,7 +155,6 @@ typedef struct
 	int first;
 	int second;
 	int third;
-	int data;
 } eei_symboltable_index;
 
 ee_symboltable_reply eei_symboltable_find_text(

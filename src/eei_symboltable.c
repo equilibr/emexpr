@@ -252,9 +252,6 @@ void eei_symboltable_invalidate_index(eei_symboltable_index * index, int level)
 
 	if (level <= 3)
 		index->third = -1;
-
-	if (level <= 4)
-		index->data = -1;
 }
 
 ee_symboltable_reply eei_symboltable_find_text(
@@ -367,7 +364,6 @@ ee_symboltable_reply eei_symboltable_get_variable(
 		return ee_symboltable_no_type;
 
 	index->third = index3;
-	index->data = index3;
 	return ee_symboltable_ok;
 }
 
@@ -438,7 +434,6 @@ ee_symboltable_reply eei_symboltable_get_function(
 		return seen_function ? ee_symboltable_filtered : ee_symboltable_no_type;
 
 	index->third = index3;
-	index->data = index3;
 	return ee_symboltable_ok;
 }
 
@@ -710,7 +705,7 @@ ee_symboltable_reply eei_symboltable_add_variable(
 	 //If so the existing value will simply be re-bound to the new variable.
 	 if (reply == ee_symboltable_ok)
 	 {
-		 st->third.locations[index.data].variable = item;
+		 st->third.locations[index.third].variable = item;
 		 return ee_symboltable_ok;
 	 }
 
@@ -728,10 +723,9 @@ ee_symboltable_reply eei_symboltable_add_variable(
 	 //Write the data into the third-level
 	 st->third.data[index.third].flags = ee_function_flag_invalid;
 	 st->third.data[index.third].arity = 0;
-	 index.data = index.third;
 
 	 st->used->locations++;
-	 st->third.locations[index.data].variable = item;
+	 st->third.locations[index.third].variable = item;
 	 return ee_symboltable_ok;
  }
 
@@ -753,7 +747,7 @@ ee_symboltable_reply eei_symboltable_add_function(
 	 //If so the existing function will simply be overwritten with the new one.
 	 if (reply == ee_symboltable_ok)
 	 {
-		 st->third.locations[index.data].function = item;
+		 st->third.locations[index.third].function = item;
 		 return ee_symboltable_ok;
 	 }
 
@@ -771,10 +765,9 @@ ee_symboltable_reply eei_symboltable_add_function(
 	 //Write the data into the third-level
 	 st->third.data[index.third].flags = flags;
 	 st->third.data[index.third].arity = arity;
-	 index.data = index.third;
 
 	 st->used->locations++;
-	 st->third.locations[index.data].function = item;
+	 st->third.locations[index.third].function = item;
 	 return ee_symboltable_ok;
  }
 
