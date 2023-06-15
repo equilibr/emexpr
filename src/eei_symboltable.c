@@ -339,35 +339,7 @@ ee_symboltable_reply eei_symboltable_find_text(
 	return ee_symboltable_no_name;
 }
 
-ee_symboltable_reply eei_symboltable_get_variable(
-		const eei_symboltable * st,
-		eei_symboltable_index * index)
-{
-	//Returns a pointer to a variable given an index returned by eei_symboltable_find_text
-
-	eei_symboltable_invalidate_index(index, 3);
-
-	//Early break when nothing was found
-	if (index->second < 0)
-		return ee_symboltable_no_name;
-
-	//Make sure a variable actually exists at that index in the third level
-	int index3 = st->second.next[index->second].index;
-	int index3_stop = index3 + st->second.next[index->second].count;
-
-	for (; index3 < index3_stop; ++index3)
-		if (st->third.data[index3].flags == ee_function_flag_invalid)
-			break;
-
-	if (index3 == index3_stop)
-		//There is no variable at this index
-		return ee_symboltable_no_type;
-
-	index->third = index3;
-	return ee_symboltable_ok;
-}
-
-ee_symboltable_reply eei_symboltable_get_function(
+ee_symboltable_reply eei_symboltable_get(
 		const eei_symboltable * st,
 		eei_symboltable_index * index,
 		ee_arity arity,
@@ -702,65 +674,26 @@ ee_symboltable_reply eei_symboltable_add_third(
 	return ee_symboltable_ok;
 }
 
-ee_symboltable_reply eei_symboltable_add_variable(
+ee_symboltable_reply eei_symboltable_add(
 		eei_symboltable * st,
 		const ee_char_type * start,
 		const ee_element_count length,
-		ee_variable_type * item)
- {
-	 eei_symboltable_index index;
-	 ee_symboltable_reply reply;
-
-	 //First we try to find if a varaible with the same name already exists.
-	 eei_symboltable_find_text(st, start, length, &index);
-	 reply = eei_symboltable_get_variable(st, &index);
-
-	 //If so the existing value will simply be re-bound to the new variable.
-	 if (reply == ee_symboltable_ok)
-	 {
-		 st->third.locations[index.third].variable = item;
-		 return ee_symboltable_ok;
-	 }
-
-	 //This is new data that needs to be added
-
-	 //Make sure there is space in the data vector
-	 if (st->used->locations >= st->allocated->locations)
-		 return ee_symboltable_memory;
-
-	 //Add third-level data for a variable
-	 reply = eei_symboltable_add_third(st,&index,start,length);
-	 if (reply != ee_symboltable_ok)
-		 return reply;
-
-	 //Write the data into the third-level
-	 st->third.data[index.third].flags = ee_function_flag_invalid;
-	 st->third.data[index.third].arity = 0;
-
-	 st->used->locations++;
-	 st->third.locations[index.third].variable = item;
-	 return ee_symboltable_ok;
- }
-
-ee_symboltable_reply eei_symboltable_add_function(
-		eei_symboltable * st,
-		const ee_char_type * start,
-		const ee_element_count length,
-		ee_function item,
 		ee_arity arity,
-		ee_function_flags flags)
+		ee_function_flags all_flags,
+		ee_function_flags not_flags,
+		int * location)
  {
 	 eei_symboltable_index index;
 	 ee_symboltable_reply reply;
 
 	 //First we try to find if a function with the same name, arity and flags already exists.
 	 eei_symboltable_find_text(st, start, length, &index);
-	 reply = eei_symboltable_get_function(st, &index, arity, 0, flags, 0);
+	 reply = eei_symboltable_get(st, &index, arity, 0, all_flags, not_flags);
 
 	 //If so the existing function will simply be overwritten with the new one.
 	 if (reply == ee_symboltable_ok)
 	 {
-		 st->third.locations[index.third].function = item;
+		 *location = index.third;
 		 return ee_symboltable_ok;
 	 }
 
@@ -776,11 +709,11 @@ ee_symboltable_reply eei_symboltable_add_function(
 		 return reply;
 
 	 //Write the data into the third-level
-	 st->third.data[index.third].flags = flags;
+	 st->third.data[index.third].flags = all_flags;
 	 st->third.data[index.third].arity = arity;
 
 	 st->used->locations++;
-	 st->third.locations[index.third].function = item;
+	 *location = index.third;
 	 return ee_symboltable_ok;
  }
 
@@ -1158,17 +1091,22 @@ ee_symboltable_reply eei_symboltable_add_functions(eei_symboltable * st, const e
 	{
 		const int length = eei_symboltable_name_length(item->name);
 
+		int location;
+
 		const ee_symboltable_reply reply =
-				eei_symboltable_add_function(
+				eei_symboltable_add(
 					st,
 					item->name,
 					length,
-					item->item,
 					item->arity,
-					item->flags);
+					item->flags,
+					0,
+					&location);
 
 		if (reply != ee_symboltable_ok)
 			return reply;
+
+		st->third.locations[location].function = item->item;
 
 		item++;
 	}
@@ -1184,15 +1122,22 @@ ee_symboltable_reply eei_symboltable_add_variables(eei_symboltable * st, const e
 	{
 		const int length = eei_symboltable_name_length(item->name);
 
+		int location;
+
 		const ee_symboltable_reply reply =
-				eei_symboltable_add_variable(
+				eei_symboltable_add(
 					st,
 					item->name,
 					length,
-					item->item);
+					0,
+					0,
+					~ee_function_flag_invalid,
+					&location);
 
 		if (reply != ee_symboltable_ok)
 			return reply;
+
+		st->third.locations[location].variable = item->item;
 
 		item++;
 	}

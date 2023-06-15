@@ -166,11 +166,7 @@ ee_symboltable_reply eei_symboltable_find_text(
 		const ee_element_count length,
 		eei_symboltable_index * index);
 
-ee_symboltable_reply eei_symboltable_get_variable(
-		const eei_symboltable * st,
-		eei_symboltable_index * index);
-
-ee_symboltable_reply eei_symboltable_get_function(
+ee_symboltable_reply eei_symboltable_get(
 		const eei_symboltable * st,
 		eei_symboltable_index * index,
 		ee_arity arity,

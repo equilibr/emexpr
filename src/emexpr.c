@@ -1469,7 +1469,7 @@ ee_variable_type * eei_parse_symbols_get_variable(
 				token_length,
 				&index);
 
-	eei_symboltable_get_variable(&parser->symboltable, &index);
+	eei_symboltable_get(&parser->symboltable, &index,0,0,0,~ee_function_flag_invalid);
 	return eei_parse_symbols_get_variable_from_index(parser, &index);
 }
 
@@ -1496,7 +1496,7 @@ ee_function eei_parse_symbols_get_function(
 				&index);
 
 	const ee_symboltable_reply reply =
-			eei_symboltable_get_function(
+			eei_symboltable_get(
 				&parser->symboltable,
 				&index,
 				arity,
@@ -1886,11 +1886,11 @@ ee_parser_reply eei_rule_handler_variable(eei_parser * parser, const eei_parser_
 				&index);
 
 	//Look for the variable
-	eei_symboltable_get_variable(&parser->symboltable, &index);
+	eei_symboltable_get(&parser->symboltable, &index,0,0,0,~ee_function_flag_invalid);
 	ee_variable_type * var = eei_parse_symbols_get_variable_from_index(parser, &index);
 
 	//Look for a zero-arity function with the same name
-	eei_symboltable_get_function(
+	eei_symboltable_get(
 				&parser->symboltable,
 				&index,
 				0,
