@@ -27,13 +27,30 @@ typedef ee_element_count eei_symboltable_element_count;
 
 typedef struct
 {
+	//These are sizes, in elements.
+
+	//Total number of second-level elements
+	ee_memory_size second_level;
+
+	//Total number of third-level elements
+	ee_memory_size third_level;
+
+	//Size of the textbook
+	ee_memory_size textbook;
+} eei_symboltable_usage_data;
+
+typedef struct
+{
+	//Offsets for the various elements
 	//The elements are defined here in the order they appear
 	//	inside the symbol table memory, not in the order of usage by the code.
-	//Depending on the usage theese are offset, in bytes, or sizes, in elements.
+	//These are offsets, in byts.
 
-	//This has the following arrays, all of the same size, in order:
-	// second.book.indexes, second.book.counts, second.next.indexes, second.next.counts
+	// second.book
 	ee_memory_size second_level;
+
+	//second.next
+	ee_memory_size second_level_next;
 
 	//third.data
 	ee_memory_size third_level;
@@ -43,7 +60,7 @@ typedef struct
 
 	//second.textbook
 	ee_memory_size textbook;
-} eei_symboltable_usage_data;
+} eei_symboltable_offsets;
 
 //Holds basic data about a function
 typedef struct
@@ -80,8 +97,7 @@ typedef struct
 	ee_char_type * textbook;
 
 	//Index into the third-level table where function flag/arity combinations for a symbol start.
-	//Count of combinations.
-	eei_symboltable_level * next;
+	eei_symboltable_element_count * next;
 } eei_symboltable_second_level;
 
 typedef union
@@ -136,7 +152,7 @@ typedef struct
 	ee_symboltable_header header;
 
 	//Byte offsets from "data" for the various tables
-	eei_symboltable_usage_data offsets;
+	eei_symboltable_offsets offsets;
 
 	//Used element counts for each of the items in 'offsets'
 	eei_symboltable_usage_data used;

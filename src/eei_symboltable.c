@@ -254,6 +254,14 @@ inline void eei_symboltable_invalidate_index(eei_symboltable_index * index, int 
 		index->third = -1;
 }
 
+inline ee_element_count eei_symboltable_count_third(const eei_symboltable * st, int index)
+{
+	if (index + 1 < st->used->second_level)
+		return st->second.next[index+1] - st->second.next[index];
+	else
+		return st->used->third_level - st->second.next[index];
+}
+
 ee_symboltable_reply eei_symboltable_find_text(
 		const eei_symboltable * st,
 		const ee_char_type * start,
@@ -357,8 +365,8 @@ ee_symboltable_reply eei_symboltable_get(
 		return ee_symboltable_no_name;
 
 	//Find the matching function at that index in the third level
-	int index3 = st->second.next[index->second].index;
-	int index3_stop = index3 + st->second.next[index->second].count;
+	int index3 = st->second.next[index->second];
+	int index3_stop = index3 + eei_symboltable_count_third(st,index->second);
 
 	int seen_function = 0;
 
@@ -525,7 +533,9 @@ inline ee_symboltable_reply eei_symboltable_add_text(
 	//	 since the outcome is hard to predict.
 	eei_symboltable_element_count book_index;
 	{
-		const ee_symboltable_reply treply = eei_symboltable_add_textbook(st,start,length,&book_index);
+		const ee_symboltable_reply treply =
+				eei_symboltable_add_textbook(st,start,length,&book_index);
+
 		if (treply != ee_symboltable_ok)
 			return treply;
 	}
@@ -567,8 +577,7 @@ inline ee_symboltable_reply eei_symboltable_add_text(
 		{
 			st->second.book[destination].index = st->second.book[destination-1].index;
 			st->second.book[destination].count = st->second.book[destination-1].count;
-			st->second.next[destination].index = st->second.next[destination-1].index;
-			st->second.next[destination].count = st->second.next[destination-1].count;
+			st->second.next[destination] = st->second.next[destination-1];
 		}
 
 		//We also need to update all first-level indexes that pointed into the moved elements
@@ -588,7 +597,7 @@ inline ee_symboltable_reply eei_symboltable_add_text(
 	st->second.book[insertion].index = book_index;
 
 	//This is a new symbol so it has no third level data
-	st->second.next[insertion].count = 0;
+	st->second.next[insertion] = st->used->third_level;
 
 	//The caller should set the index once it is known
 	index->second = insertion;
@@ -606,8 +615,11 @@ inline ee_symboltable_reply eei_symboltable_add_third(
 	if (st->used->third_level >= st->allocated->third_level)
 		return ee_symboltable_memory;
 
+	int newelement = 0;
 	if (index->second == -1)
 	{
+		newelement = 1;
+
 		//The symbol needs to be added
 		const ee_symboltable_reply reply =
 				eei_symboltable_add_text(st, start, length, index);
@@ -620,29 +632,16 @@ inline ee_symboltable_reply eei_symboltable_add_third(
 
 	//Find the third-level insertion point.
 	//The third level data is sorted by the second level index.
-	int insertion;
+	const int insertion =
+			(index->second + 1 == st->used->second_level)
+			//If this is the last second-level index just insert at the end
+			? st->used->third_level
+			//Otherwise insert at the index of the next second-level.
+			: st->second.next[index->second+1];
 
-	if (st->second.next[index->second].count == 0)
-	{
-		//For an empty second level we need to find the next non-empty first-level element and insert there.
-
-		eei_symboltable_element_count next = index->second;
-
-		insertion = st->used->third_level;
-
-		while (++next < st->used->second_level)
-			if (st->second.next[next].count != 0)
-			{
-				insertion = st->second.next[next].index;
-				break;
-			}
-
+	if (newelement)
 		//Set the new insertion point as the index
-		st->second.next[index->second].index = insertion;
-	}
-	else
-		//For an existing second level just add at its own end
-		insertion = st->second.next[index->second].index + st->second.next[index->second].count;
+		st->second.next[index->second] = insertion;
 
 	if (insertion != st->used->third_level)
 	{
@@ -652,7 +651,6 @@ inline ee_symboltable_reply eei_symboltable_add_third(
 		{
 			st->third.data[destination].flags = st->third.data[destination-1].flags;
 			st->third.data[destination].arity = st->third.data[destination-1].arity;
-
 			st->third.locations[destination].ptr = st->third.locations[destination-1].ptr;
 		}
 
@@ -662,10 +660,9 @@ inline ee_symboltable_reply eei_symboltable_add_third(
 		// after the one being updated need an adjustement.
 
 		for (int i = index->second+1; i < st->used->second_level; ++i)
-			st->second.next[i].index++;
+			st->second.next[i]++;
 	}
 
-	st->second.next[index->second].count++;
 	st->used->third_level++;
 
 	//The caller should fill the data
@@ -699,10 +696,6 @@ ee_symboltable_reply eei_symboltable_add(
 
 	 //This is new data that needs to be added
 
-	 //Make sure there is space in the data vector
-	 if (st->used->locations >= st->allocated->locations)
-		 return ee_symboltable_memory;
-
 	 //Add third-level data for a variable
 	 reply = eei_symboltable_add_third(st,&index,start,length);
 	 if (reply != ee_symboltable_ok)
@@ -712,7 +705,6 @@ ee_symboltable_reply eei_symboltable_add(
 	 st->third.data[index.third].flags = all_flags;
 	 st->third.data[index.third].arity = arity;
 
-	 st->used->locations++;
 	 *location = index.third;
 	 return ee_symboltable_ok;
  }
@@ -752,12 +744,22 @@ void eei_symboltable_copy_usagedata(
 {
 	dst->second_level = src->second_level;
 	dst->third_level = src->third_level;
+	dst->textbook = src->textbook;
+}
+
+void eei_symboltable_copy_offsets(
+		eei_symboltable_offsets * dst,
+		const eei_symboltable_offsets * src)
+{
+	dst->second_level = src->second_level;
+	dst->second_level_next = src->second_level_next;
+	dst->third_level = src->third_level;
 	dst->locations = src->locations;
 	dst->textbook = src->textbook;
 }
 
 const char * eei_symboltable_calculate_offsets(
-		eei_symboltable_usage_data * offsets,
+		eei_symboltable_offsets * offsets,
 		const eei_symboltable_struct * full,
 		const eei_symboltable_usage_data * size)
 {
@@ -772,7 +774,14 @@ const char * eei_symboltable_calculate_offsets(
 			ptr++;
 
 	offsets->second_level = (ee_memory_size)(ptr - base);
-	ptr += sizeof(eei_symboltable_level) * size->second_level * 2;
+	ptr += sizeof(eei_symboltable_level) * size->second_level;
+
+	//Secon level next
+	while ((ptrdiff_t)ptr % alignof(eei_symboltable_element_count))
+		ptr++;
+
+	offsets->second_level_next = (ee_memory_size)(ptr - base);
+	ptr += sizeof(eei_symboltable_element_count) * size->second_level;
 
 	//Third level data
 	while ((ptrdiff_t)ptr % alignof(eei_symboltable_function_data))
@@ -786,7 +795,7 @@ const char * eei_symboltable_calculate_offsets(
 		ptr++;
 
 	offsets->locations = (ee_memory_size)(ptr - base);
-	ptr += sizeof(eei_symboltable_location) * size->locations;
+	ptr += sizeof(eei_symboltable_location) * size->third_level;
 
 	//Textbook
 	while ((ptrdiff_t)ptr % alignof(ee_char_type))
@@ -815,7 +824,7 @@ void eei_symboltable_calculate_pointers(
 
 	//Second level is daisy chained
 	pointers->second.book = (eei_symboltable_level*)(base + full->offsets.second_level);
-	pointers->second.next = pointers->second.book + pointers->allocated->second_level;
+	pointers->second.next = (eei_symboltable_element_count*)(base + full->offsets.second_level_next);
 
 	pointers->third.data = (eei_symboltable_function_data*)(base + full->offsets.third_level);
 	pointers->third.locations = (eei_symboltable_location*)(base + full->offsets.locations);
@@ -825,9 +834,9 @@ void eei_symboltable_calculate_pointers(
 int eei_symboltable_calculate_size(
 		const eei_symboltable_struct * full,
 		const eei_symboltable_usage_data * size,
-		eei_symboltable_usage_data * offsets)
+		eei_symboltable_offsets * offsets)
 {
-	eei_symboltable_usage_data dummy_offsets;
+	eei_symboltable_offsets dummy_offsets;
 
 	const char * end =
 			eei_symboltable_calculate_offsets(
@@ -843,9 +852,9 @@ void eei_symboltable_fill_memory(eei_symboltable_struct * full_symboltable)
 	//First we calculate the current ratio of textbook/other data and use
 	//	that for further estimates.
 	const int others =
-			full_symboltable->allocated.second_level * sizeof(eei_symboltable_element_count) * 4
+			full_symboltable->allocated.second_level * sizeof(eei_symboltable_element_count) * 3
 			+ full_symboltable->allocated.third_level * sizeof(eei_symboltable_function_data)
-			+ full_symboltable->allocated.locations * sizeof(eei_symboltable_location);
+			+ full_symboltable->allocated.third_level * sizeof(eei_symboltable_location);
 
 	//Always allocate *at least* as much space for the textbook as all other data
 	int textbookratio = 1;
@@ -854,13 +863,10 @@ void eei_symboltable_fill_memory(eei_symboltable_struct * full_symboltable)
 
 	//Calculate the size of a virtual "element" that will be used to estimate how much
 	//	we can fit in.
-	//We assume a single third-level for a second level but, at the same time,
-	//	overcompensate by assuming both varaibles and function will be present for a symbol.
+	//We over compensate by assuming two third-level elements for a second level one.
 	const int element =
-			sizeof(eei_symboltable_element_count) * 4
-			+ sizeof(eei_symboltable_function_data)
-			+ sizeof(ee_variable)
-			+ sizeof(ee_function);
+			sizeof(eei_symboltable_element_count) * 3
+			+ (sizeof(eei_symboltable_function_data) + sizeof(eei_symboltable_location)) * 2;
 
 	//Calculate the size we can allocate for all other elements
 	const int totalsize = full_symboltable->header.size - (&full_symboltable->data[0] - (const char*)full_symboltable);
@@ -870,11 +876,10 @@ void eei_symboltable_fill_memory(eei_symboltable_struct * full_symboltable)
 	eei_symboltable_usage_data allocated;
 	allocated.second_level = elements;
 	allocated.third_level = elements;
-	allocated.locations = elements;
 	allocated.textbook = totalsize - (elements+1) * element;
 
 	//Reclaulte the final size needed
-	eei_symboltable_usage_data offsets;
+	eei_symboltable_offsets offsets;
 	const ee_memory_size newsize =
 			eei_symboltable_calculate_size(
 				full_symboltable,
@@ -885,7 +890,7 @@ void eei_symboltable_fill_memory(eei_symboltable_struct * full_symboltable)
 	{
 		//We can fit everything, so use it
 		eei_symboltable_copy_usagedata(&full_symboltable->allocated, &allocated);
-		eei_symboltable_copy_usagedata(&full_symboltable->offsets, &offsets);
+		eei_symboltable_copy_offsets(&full_symboltable->offsets, &offsets);
 	}
 }
 
@@ -920,7 +925,7 @@ ee_memory_size eei_symboltable_expand(
 	for (int i = lengths.textbook-1; i <= 0; --i)
 		expanded.second.textbook[i] = current.second.textbook[i];
 
-	for (int i = lengths.locations-1; i <= 0; --i)
+	for (int i = lengths.third_level-1; i <= 0; --i)
 		expanded.third.locations[i].ptr = current.third.locations[i].ptr;
 
 	for (int i = lengths.third_level-1; i <= 0; --i)
@@ -930,10 +935,7 @@ ee_memory_size eei_symboltable_expand(
 	}
 
 	for (int i = lengths.second_level-1; i <= 0; --i)
-	{
-		expanded.second.next[i].index = current.second.next[i].index;
-		expanded.second.next[i].count = current.second.next[i].count;
-	}
+		expanded.second.next[i] = current.second.next[i];
 
 	for (int i = lengths.second_level-1; i <= 0; --i)
 	{
@@ -990,10 +992,7 @@ ee_memory_size eei_symboltable_compact(
 	}
 
 	for (int i = 0; i < size->second_level; ++i)
-	{
-		compacted.second.next[i].count = current.second.next[i].count;
-		compacted.second.next[i].index = current.second.next[i].index;
-	}
+		compacted.second.next[i] = current.second.next[i];
 
 	for (int i = 0; i < size->third_level; ++i)
 	{
@@ -1001,7 +1000,7 @@ ee_memory_size eei_symboltable_compact(
 		compacted.third.data[i].arity = current.third.data[i].arity;
 	}
 
-	for (int i = 0; i < size->locations; ++i)
+	for (int i = 0; i < size->third_level; ++i)
 		compacted.third.locations[i].ptr = current.third.locations[i].ptr;
 
 	for (int i = 0; i < size->textbook; ++i)
@@ -1079,7 +1078,6 @@ void eei_symboltable_estimate_usage(
 
 	usage->second_level = variable_count + function_count;
 	usage->third_level = usage->second_level;
-	usage->locations = usage->third_level;
 	usage->textbook = textbook;
 }
 
@@ -1164,41 +1162,36 @@ ee_symboltable_reply ee_symboltable_add(
 		eei_symboltable_usage_data usage;
 		eei_symboltable_estimate_usage(functions, variables, 1, &usage);
 
-		const ee_memory_size newsize =
+		symboltable->size =
 				eei_symboltable_calculate_size(full_symboltable, &usage, NULL);
 
-		if (symboltable->size >= (ee_memory_size)sizeof(eei_symboltable_struct))
-		{
-			//There is enough space to store the allocations count
-			eei_symboltable_copy_usagedata(&full_symboltable->allocated, &usage);
-			full_symboltable->header.flags |= eei_symboltable_flag_allocation;
-		}
-
-		if (newsize > symboltable->size)
-		{
-			symboltable->size = newsize;
-			return ee_symboltable_memory;
-		}
-		else
-			return ee_symboltable_ok;
+		return ee_symboltable_memory;
 	}
 
 	if (symboltable->size < (ee_memory_size)sizeof(eei_symboltable_struct))
+	{
 		//Not enough memory to do anything at all
+		symboltable->size = sizeof(eei_symboltable_struct);
 		return ee_symboltable_memory;
+	}
 
-	if (!(full_symboltable->header.flags & eei_symboltable_flag_initialized))
+	if (full_symboltable->header._.flags & eei_symboltable_flag_compacted)
+		//Disallow modifications of compacted data since its too much trouble
+		//	to revert to a non-compacted state.
+		return ee_symboltable_compacted;
+
+	if (!(full_symboltable->header._.flags & eei_symboltable_flag_initialized))
 	{
 		//The offset/usage data is not setup
 		//We need to do that before the symbol table can be used at all
 
-		if (!(full_symboltable->header.flags & eei_symboltable_flag_allocation))
+		if (!(full_symboltable->header._.flags & eei_symboltable_flag_allocation))
 		{
 			//Allocation data was never calculated - do it now
 
 			//Calculate and store the usage data
 			eei_symboltable_estimate_usage(functions, variables, 1, &full_symboltable->allocated);
-			full_symboltable->header.flags |= eei_symboltable_flag_allocation;
+			full_symboltable->header._.flags |= eei_symboltable_flag_allocation;
 		}
 
 		//Calculate the size requierement and store the offsets
@@ -1226,24 +1219,18 @@ ee_symboltable_reply ee_symboltable_add(
 
 		full_symboltable->used.second_level = 0;
 		full_symboltable->used.third_level = 0;
-		full_symboltable->used.locations = 0;
 		full_symboltable->used.textbook = 0;
 
 		for (int i = 0; i < eei_symboltable_total_symbols; ++i)
 			full_symboltable->first_level[i].count = 0;
 
-		full_symboltable->header.flags |= eei_symboltable_flag_initialized;
+		full_symboltable->header._.flags |= eei_symboltable_flag_initialized;
 	}
-
-	if (full_symboltable->header.flags & eei_symboltable_flag_compacted)
-		//We don't allow modification on compated data even though,
-		//	in the current implementation, this data can still be appended (after expansion)
-		return ee_symboltable_compacted;
 
 	int iterations = 2;
 	while (--iterations)
 	{
-		if (full_symboltable->header.flags & eei_symboltable_flag_reallocated)
+		if (full_symboltable->header._.flags & eei_symboltable_flag_reallocated)
 		{
 			//There was a memory re-allocation so data must be expanded in memory
 
@@ -1265,7 +1252,7 @@ ee_symboltable_reply ee_symboltable_add(
 			//We have space to work in. Now we need to expand and move all data vectors.
 			eei_symboltable_expand(full_symboltable, &full_symboltable->requested);
 
-			full_symboltable->header.flags &= ~eei_symboltable_flag_reallocated;
+			full_symboltable->header._.flags &= ~eei_symboltable_flag_reallocated;
 		}
 
 		//Adding data
@@ -1279,7 +1266,7 @@ ee_symboltable_reply ee_symboltable_add(
 
 		ee_symboltable_reply reply = ee_symboltable_ok;
 
-		if (!(full_symboltable->header.flags & eei_symboltable_flag_library))
+		if (!(full_symboltable->header._.flags & eei_symboltable_flag_library))
 		{
 			//The library was not added yet, do it now
 
@@ -1287,7 +1274,7 @@ ee_symboltable_reply ee_symboltable_add(
 				reply = eei_symboltable_add_functions(&st, EEI_FUNCTION_LIBRARY);
 
 			if (reply == ee_symboltable_ok)
-				full_symboltable->header.flags |= eei_symboltable_flag_library;
+				full_symboltable->header._.flags |= eei_symboltable_flag_library;
 		}
 
 		if (functions && (reply == ee_symboltable_ok))
@@ -1304,7 +1291,7 @@ ee_symboltable_reply ee_symboltable_add(
 			eei_symboltable_estimate_usage(
 						functions,
 						variables,
-						(full_symboltable->header.flags & eei_symboltable_flag_library),
+						(full_symboltable->header._.flags & eei_symboltable_flag_library),
 						&usage);
 
 			//Play what-if this was all added correctly
@@ -1314,7 +1301,7 @@ ee_symboltable_reply ee_symboltable_add(
 
 			//Save this for the next invocation when we have the requested memory actually provided
 			eei_symboltable_copy_usagedata(&full_symboltable->requested, &usage);
-			full_symboltable->header.flags |=  eei_symboltable_flag_reallocated;
+			full_symboltable->header._.flags |=  eei_symboltable_flag_reallocated;
 
 			//Calculate the size requierements
 			const ee_memory_size newsize =
@@ -1358,7 +1345,7 @@ ee_symboltable_reply ee_symboltable_add(
 		symboltable->size =
 				eei_symboltable_compact(full_symboltable, &full_symboltable->used);
 
-		full_symboltable->header.flags |= eei_symboltable_flag_compacted;
+		full_symboltable->header._.flags |= eei_symboltable_flag_compacted;
 	}
 
 	return ee_symboltable_ok;

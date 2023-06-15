@@ -351,7 +351,12 @@ typedef struct
 //Semi-transparent header of the symbol-table binder
 typedef struct
 {
-	int flags;
+	union
+	{
+		void * align;
+		int flags;
+	} _;
+
 	ee_memory_size size;
 } ee_symboltable_header;
 

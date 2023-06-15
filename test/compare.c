@@ -76,7 +76,7 @@ static long double measure_evaluation(
 		char data[pool_bytes];
 	} environment;
 
-	symboltable.header.flags = 0;
+	symboltable.header._.flags = 0;
 	symboltable.header.size = sizeof(symboltable);
 	ee_symboltable_add(&symboltable.header, functions, variables);
 
@@ -132,9 +132,10 @@ static long double measure_compilation(
 		char data[pool_bytes];
 	} environment;
 
-	symboltable.header.flags = 0;
+	symboltable.header._.flags = 0;
 	symboltable.header.size = sizeof(symboltable);
 	ee_symboltable_add(&symboltable.header, functions, variables);
+	ee_symboltable_add(&symboltable.header, NULL, NULL);
 
 	ee_data_size sizes;
 
@@ -167,7 +168,7 @@ static long double measure_symbol(
 		const ee_symboltable_variable * variables)
 {
 	//Globally allocated data pools
-	enum { pool_bytes = 1024 };
+	enum { pool_bytes = 1024*2 };
 
 	static union
 	{
@@ -180,9 +181,10 @@ static long double measure_symbol(
 	const clock_t start = clock();
 	do
 	{
-		symboltable.header.flags = 0;
+		symboltable.header._.flags = 0;
 		symboltable.header.size = sizeof(symboltable);
 		ee_symboltable_add(&symboltable.header, functions, variables);
+		ee_symboltable_add(&symboltable.header, NULL, NULL);
 
 		elapsed = clock() - start;
 		counts++;
