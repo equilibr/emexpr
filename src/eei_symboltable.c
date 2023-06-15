@@ -6,10 +6,77 @@
  * For full license text see attached "LICENSE" file
 */
 
-#include "eei_symboltable.h"
-#include "emexpr.h"
-#include <stddef.h>
+/*
+	This is an implementation of a symbol table, a multimap from identifier names to varibales & functions.
+	The symbol table is used by the parser to query for previously supplied identifiers.
+	During setup the symbol table stores mapping between variable/function names and their memory locations.
+	During parsing those locations are provided to the parser, while applying various checks and filters.
+	To completely understand the design decision in the implementation an understanding of how EMEXPR handles
+	 variables and functions is needed.
 
+	The data is stored in memory using a tiered heirarchy with a supplemental textbook.
+
+	At the first level there is a vector with each element corresponding to the first character of an identifier.
+	The elements provide a link into the second level,
+	 each storing the start index and count of (contignuous) linked items at the second level.
+
+	At the second level there is a vector of elements, linked from the first level.
+	Elements linked from the same first level element are contignous in memory.
+	Each element provides two links:
+	 * To the textbook where the rest of the characters are stored.
+	 * To the third level where the actual memory locations and flags of the functions & variables are stored.
+	The textbook link holds the length of the stored identifier and its start index in the textbook.
+	When the identifier is only 2 characters long, as an optimization, the textbook is not used and
+	 the second character is stored *instead* of the textbook access index.
+	 This allows storing all used operators without using any textbook space.
+	The third level link holds the start index, at the third level, and a count of consecutive elements
+	 that hold variables & functions for the current identifier.
+
+	At the third level there are three vectors, one holding the flags, one the varaibles and one the functions.
+	The vector linked from the second level is the flags vector.
+	For each element in the flags vector there is a corresponding element in *either* the variables or the function vectors.
+	To find the index into the variables/functions vectors corresponding to some element in the flags vector,
+	 the flags vector should be scanned from its start and the number of occurence for the appropriate flags counted.
+
+	Notes and TODO:
+
+	The current design of the third level was intened to save memory for systems where the pointers to data & code have different lengths.
+	This comes at a great expence of processing thus it might be feasible to consolidate them into a single vector matching the flags.
+	On the other hand if compression is to be utilized keeping the data separate should provide a benefit since memory locations of
+	 variables and code are, usually, clumped into two separate locations.
+
+	When storing varaibles the flags vector is wasted, given most its data is irrelevant.
+	This could be remedied by storing the flags only for functions and using a bitfield to differentiate variables from functions.
+	While saving space this would add to the processing since it, effectively,
+	 puts the flags & variable/function vectors at the *fourth* level of the heirarchy.
+	This would also prevent saving a "bound" count for the variables (bound checking for indexed variable access).
+
+	The first level might be compacted by adding a bitfield denoting what first level elements are used and, then, storing only those.
+	If the second level is to be re-ordered by its first level link then the first level would only need to holds the counts.
+	This would half its memory usage at the expece of processing.
+	The same method could be applied to the third level, though the relative second-level savings are much less
+	 given it also holds the textbook links.
+
+	Given no character is assigned any special meaning at any level the symbol table can be modified to support
+	 the complete UTF-8 encoding by simply expanding the first level *only*
+	 to include all character that start a valid UTF-8 sequence.
+
+	The textbook is already somewhat compacted by re-using existing data.
+	This works best when longer identifiers are provided before shorter ones during setup.
+	It is possible to post-process the textbook to look for missed compaction opportunities.
+	Given the textbook is only used in conjunction with links from the second level further compression(LZ77, e.g.) seems unnecesarry.
+
+	Since, during queries, the access is sequential across level and, also, inside each level,
+	 online decompressions is fesible if the complete symbol table is compressed.
+	This allows to only keep the compressed data in memory, while providing low-resource access, especially when using modern
+	 entropy compression algorithms such as "Asymmetric numeral systems".
+	It seems possible to provide "jump tables" for the decoder to speed up processing by skipping parts of the compressed stream.
+	If the level data is stored interleaved, that is first-second-third-... then it is possible to perform queries without
+	 the need to processes most of the irrelavant data.
+*/
+
+#include "eei_symboltable.h"
+#include <stddef.h>
 
 //Auto-selections of compilation options based on external DEFINEs'
 //-----------------------------------------------------------------
@@ -1435,3 +1502,14 @@ ee_symboltable_reply ee_symboltable_add(
 
 	return ee_symboltable_ok;
 }
+
+
+//System verification
+//-------------------
+
+//This structure is just a clever way to make sure the sizes of the basic data types are exactly what we expect them to be.
+//When a check fails the compilation will halt with an error of: "check type" declared as an array with a negative size
+struct check_type_sizes
+{
+		int not_enough_bits_for_symboltable_compaction[( sizeof(eei_symboltable_element_count) >= sizeof(ee_char_type) ) ? 1 : -1];
+};

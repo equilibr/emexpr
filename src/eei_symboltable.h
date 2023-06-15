@@ -9,11 +9,11 @@
 #ifndef EEI_SYMBOLTABLE_H
 #define EEI_SYMBOLTABLE_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #include "emexpr.h"
+
+//Internal API for the symbol table
+//---------------------------------
+//This API is used to query the symbol table for identifiers.
 
 //We handle only printable characters in the lower ASCII region
 enum
@@ -179,10 +179,5 @@ ee_symboltable_reply eei_symboltable_get_function(
 void eei_symboltable_calculate_pointers(
 		eei_symboltable * pointers,
 		eei_symboltable_struct * full);
-
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif // EEI_SYMBOLTABLE_H
