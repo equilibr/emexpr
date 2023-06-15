@@ -562,21 +562,30 @@ ee_symboltable_reply eei_symboltable_add_text(
 	//Now we need to add it to the first 2 levels
 
 	//Find the second-level insertion point.
-	const int insertion =
-			(st->first.next[index->first].count == 0)
-
-			//Adding to an empty first-level is trivial: Just use the space at the end
-			? (st->used->second_level)
-
-			//Otherwise add at the end of the existing elements for this first level
-			: (st->first.next[index->first].index + st->first.next[index->first].count);
+	//The second level data is sorted by the first level index.
+	int insertion;
 
 	if (st->first.next[index->first].count == 0)
-		//Only update a new first-level with the index
-		index->second = insertion;
+	{
+		//For an empty first level we need to find the next non-empty first-level element and insert there.
+
+		eei_symboltable_element_count next = index->first;
+
+		insertion = st->used->second_level;
+
+		while (++next < eei_symboltable_total_symbols)
+			if (st->first.next[next].count != 0)
+			{
+				insertion = st->first.next[next].index;
+				break;
+			}
+
+		//Set the new insertion point as the index
+		st->first.next[index->first].index = insertion;
+	}
 	else
-		//Save this to allow restoring it later since it might be modified by the index-update loop
-		index->second = st->first.next[index->first].index;
+		//For an existing first level just add at its own end
+		insertion = st->first.next[index->first].index + st->first.next[index->first].count;
 
 	if (insertion != st->used->second_level)
 	{
@@ -592,14 +601,13 @@ ee_symboltable_reply eei_symboltable_add_text(
 
 		//We also need to update all first-level indexes that pointed into the moved elements
 		//	of the second level.
+		//Since we keep the second level sorted only, and all, first-level elements
+		// after the one being updated need an adjustement.
 
-		for (int i = 0; i < eei_symboltable_total_symbols; ++i)
-			if (st->first.next[i].index >= insertion)
-				st->first.next[i].index++;
+		for (int i = index->first+1; i < eei_symboltable_total_symbols; ++i)
+			st->first.next[i].index++;
 	}
 
-	//(re)set the index
-	st->first.next[index->first].index = index->second;
 	st->first.next[index->first].count++;
 	st->used->second_level++;
 
@@ -610,7 +618,7 @@ ee_symboltable_reply eei_symboltable_add_text(
 	//This is a new symbol so it has no third level data
 	st->second.next[insertion].count = 0;
 
-	//The caller should set the index once it is knwon
+	//The caller should set the index once it is known
 	index->second = insertion;
 
 	return ee_symboltable_ok;
@@ -639,21 +647,30 @@ ee_symboltable_reply eei_symboltable_add_third(
 	//At this point the first two levels are filled and the index points to them
 
 	//Find the third-level insertion point.
-	const int insertion =
-			(st->second.next[index->second].count == 0)
-
-			//Adding to an empty second-level is trivial: Just use the space at the end
-			? (st->used->third_level)
-
-			//Otherwise add at the end of the existing elements for this second level
-			: (st->second.next[index->second].index + st->second.next[index->second].count);
+	//The third level data is sorted by the second level index.
+	int insertion;
 
 	if (st->second.next[index->second].count == 0)
-		//Only update a new first-level with the index
-		index->third = insertion;
+	{
+		//For an empty second level we need to find the next non-empty first-level element and insert there.
+
+		eei_symboltable_element_count next = index->second;
+
+		insertion = st->used->third_level;
+
+		while (++next < st->used->second_level)
+			if (st->second.next[next].count != 0)
+			{
+				insertion = st->second.next[next].index;
+				break;
+			}
+
+		//Set the new insertion point as the index
+		st->second.next[index->second].index = insertion;
+	}
 	else
-		//Save this to allow restoring it later since it might be modified by the index-update loop
-		index->third = st->second.next[index->second].index;
+		//For an existing second level just add at its own end
+		insertion = st->second.next[index->second].index + st->second.next[index->second].count;
 
 	if (insertion != st->used->third_level)
 	{
@@ -672,14 +689,13 @@ ee_symboltable_reply eei_symboltable_add_third(
 
 		//We also need to update all second-level indexes that pointed into the moved elements
 		//	of the third level.
+		//Since we keep the third level sorted only, and all, second-level elements
+		// after the one being updated need an adjustement.
 
-		for (int i = 0; i < st->used->second_level; ++i)
-			if (st->second.next[i].index >= insertion)
-				st->second.next[i].index++;
+		for (int i = index->second+1; i < st->used->second_level; ++i)
+			st->second.next[i].index++;
 	}
 
-	//(re)set the index
-	st->second.next[index->second].index = index->third;
 	st->second.next[index->second].count++;
 	st->used->third_level++;
 
