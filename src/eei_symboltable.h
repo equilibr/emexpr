@@ -86,6 +86,9 @@ typedef struct
 
 typedef union
 {
+	//A field used to handle the location without differenting between the held types.
+	void * ptr;
+
 	//A bound variable
 	ee_variable variable;
 

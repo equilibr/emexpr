@@ -681,10 +681,7 @@ ee_symboltable_reply eei_symboltable_add_third(
 			st->third.data[destination].flags = st->third.data[destination-1].flags;
 			st->third.data[destination].arity = st->third.data[destination-1].arity;
 
-			if (st->third.data[destination-1].flags == ee_function_flag_invalid)
-				st->third.locations[destination].variable = st->third.locations[destination-1].variable;
-			else
-				st->third.locations[destination].function = st->third.locations[destination-1].function;
+			st->third.locations[destination].ptr = st->third.locations[destination-1].ptr;
 		}
 
 		//We also need to update all second-level indexes that pointed into the moved elements
@@ -990,15 +987,8 @@ ee_memory_size eei_symboltable_expand(
 	for (int i = lengths.textbook-1; i <= 0; --i)
 		expanded.second.textbook[i] = current.second.textbook[i];
 
-	for (int i = lengths.third_level-1; i <= 0; --i)
-	{
-		//Copy using the correct field access, as demanded by the standard
-		//Using the "current" flags, since they were not yet moved
-		if (current.third.data[i].flags == ee_function_flag_invalid)
-			expanded.third.locations[i].variable = current.third.locations[i].variable;
-		else
-			expanded.third.locations[i].function = current.third.locations[i].function;
-	}
+	for (int i = lengths.locations-1; i <= 0; --i)
+		expanded.third.locations[i].ptr = current.third.locations[i].ptr;
 
 	for (int i = lengths.third_level-1; i <= 0; --i)
 	{
@@ -1078,15 +1068,8 @@ ee_memory_size eei_symboltable_compact(
 		compacted.third.data[i].arity = current.third.data[i].arity;
 	}
 
-	for (int i = 0; i < size->third_level; ++i)
-	{
-		//Copy using the correct field access, as demanded by the standard
-		//Using the "compacted" flags since they were already moved
-		if (compacted.third.data[i].flags == ee_function_flag_invalid)
-			compacted.third.locations[i].variable = current.third.locations[i].variable;
-		else
-			compacted.third.locations[i].function = current.third.locations[i].function;
-	}
+	for (int i = 0; i < size->locations; ++i)
+		compacted.third.locations[i].ptr = current.third.locations[i].ptr;
 
 	for (int i = 0; i < size->textbook; ++i)
 		compacted.second.textbook[i] = current.second.textbook[i];
@@ -1445,4 +1428,6 @@ ee_symboltable_reply ee_symboltable_add(
 struct check_type_sizes
 {
 		int not_enough_bits_for_symboltable_compaction[( sizeof(eei_symboltable_element_count) >= sizeof(ee_char_type) ) ? 1 : -1];
+		int location_variable_longer_than_ptr[(sizeof(ee_variable) >= sizeof(void*)) ? 1 : -1];
+		int location_function_longer_than_ptr[(sizeof(ee_function) >= sizeof(void*)) ? 1 : -1];
 };
