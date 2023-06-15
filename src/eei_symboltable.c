@@ -242,7 +242,7 @@ static const ee_symboltable_function eei_operators_library[] =
 //Symbol table lookup
 //-------------------
 
-void eei_symboltable_invalidate_index(eei_symboltable_index * index, int level)
+inline void eei_symboltable_invalidate_index(eei_symboltable_index * index, int level)
 {
 	if (level <= 1)
 		index->first = -1;
@@ -412,7 +412,7 @@ ee_symboltable_reply eei_symboltable_get(
 //Symbol table building
 //---------------------
 
-ee_symboltable_reply eei_symboltable_add_textbook(
+inline ee_symboltable_reply eei_symboltable_add_textbook(
 		eei_symboltable * st,
 		const ee_char_type * start,
 		ee_element_count length,
@@ -511,7 +511,7 @@ ee_symboltable_reply eei_symboltable_add_textbook(
 	return ee_symboltable_ok;
 }
 
-ee_symboltable_reply eei_symboltable_add_text(
+inline ee_symboltable_reply eei_symboltable_add_text(
 		eei_symboltable * st,
 		const ee_char_type * start,
 		ee_element_count length,
@@ -596,7 +596,7 @@ ee_symboltable_reply eei_symboltable_add_text(
 	return ee_symboltable_ok;
 }
 
-ee_symboltable_reply eei_symboltable_add_third(
+inline ee_symboltable_reply eei_symboltable_add_third(
 		eei_symboltable * st,
 		eei_symboltable_index * index,
 		const ee_char_type * start,
