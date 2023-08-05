@@ -94,17 +94,22 @@ static const ee_symboltable_variable varData[] =
 	{0,0}
 };
 
-static void test_print_header()
+static void test_print_name(const char * name)
 {
 	printf(
-				"%20s   %8s %16s %10s "
+				"\n---%-56s "
 				"%-41s "
 				"%-41s "
+				"%s "
 				"\n",
-				"","","","",
-				"final parsed sizes",
-				"guestimated overhead");
+				name,
+				"(final parsed sizes)",
+				"(guestimated overhead)",
+				"(error)");
+}
 
+static void test_print_header()
+{
 	printf(
 				"%20s   %8s %16s %10s "
 				"%5s %4s %5s %5s %3s %3s %2s %5s   "
@@ -175,7 +180,7 @@ static int test_expression(const char * expression)
 	memset(&global_parser.header, 0, sizeof(ee_compilation_header));
 	memset(&global_environment.header, 0, sizeof(ee_environment_header));
 
-	printf("%20s = ",expression);
+	printf("%20s   ",expression);
 
 	ee_guestimate(expression, &sizes);
 	memcpy(&sizes_guess, &sizes, sizeof(ee_data_size));
@@ -224,17 +229,12 @@ static int test_expression(const char * expression)
 void test_sizes()
 {
 	test_symboltable();
-	test_print_header();
 	var1 = 0;
 
-	//Mark empty expression during parsing!
-	test_expression("");
+	test_print_name("Regular tests. All results should equal 1.");
+	test_print_header();
 
-	test_expression("a = 1");
-	test_expression("a");
-	test_expression("a = 0");
 	test_expression("!a");
-	test_expression("a = pi() / pi - 1");
 	test_expression("2M * (1/2)m");
 	test_expression("1 * 1");
 	test_expression("-(1 * -1)");
@@ -249,10 +249,19 @@ void test_sizes()
 	test_expression("!^^(0,1,1)");
 	test_expression("1.01 - 0.1/10");
 
+	test_print_name("Assignment tests. Shoul compile to stored/empty.");
+	test_print_header();
+
+	//Mark empty expression during parsing!
+	test_expression("");
+	test_expression("a = 1");
+	test_expression("a = pi() / pi - 1");
+
 	//Extra stack values
-	//TODO: Something is definetely wrong with this one...
-	test_expression("a = 0,a");
-	test_expression("a");
+	test_expression("a = 1,a");
+
+	test_print_name("Error detection. All compile should fail.");
+	test_print_header();
 
 	//Refuse assign to non-variable
 	test_expression("0 = 0");
@@ -261,7 +270,8 @@ void test_sizes()
 	test_expression("a,a = 0");
 	test_expression("a = c");
 	test_expression("c = a");
-	test_expression("arity() = 0");
+	test_expression("pi() = 0");
+	test_expression("pi = 0");
 
 	//Refuse wrong arity
 	test_expression("-(1,0,1)");
