@@ -1528,19 +1528,220 @@ ee_function eei_parse_symbols_get_function(
 	return NULL;
 }
 
+
+//Parser handler functions
+//------------------------
+
+ee_parser_reply eei_rule_handler_constant(eei_parser * parser, const eei_parser_node * node)
+{
+	ee_variable_type constant;
+
+	if (EEI_CONSTANT_PARSER(
+			&parser->expression[node->text.start],
+			&parser->expression[node->text.end],
+			&constant) != 0)
+		return ee_parser_expression_not_a_constant;
+
+	return eei_vmmake_load_constant(&parser->vm, constant);
+}
+
+ee_parser_reply eei_rule_handler_variable(eei_parser * parser, const eei_parser_node * node)
+{
+	const ee_char_type * token_start = &parser->expression[node->text.start];
+	const ee_element_count token_length = node->text.end - node->text.start;
+
+	eei_symboltable_index index;
+
+	eei_symboltable_find_text(
+				&parser->symboltable,
+				token_start,
+				token_length,
+				&index);
+
+	//Look for the variable
+	eei_symboltable_get(
+				&parser->symboltable,
+				&index,
+				0,
+				0,
+				0,
+				~ee_function_flag_invalid);
+	ee_variable_type * var = eei_parse_symbols_get_variable_from_index(parser, &index);
+
+	//Look for a zero-arity function with the same name
+	eei_symboltable_get(
+				&parser->symboltable,
+				&index,
+				0,
+				0,
+				ee_function_flag_prefix,
+				0);
+	ee_function op = eei_parse_symbols_get_function_from_index(parser, &index);
+
+	if (var && op)
+		//Do not allow both to be defined to avoid confusion
+		return ee_parser_varfunction_duplicate;
+
+	if (!var && !op)
+		//None found - assume this should have been a variable
+		return ee_parser_unknown_variable;
+
+	if (var)
+		return eei_vmmake_load_variable(&parser->vm, var);
+	else
+		return eei_vmmake_execute_functions(&parser->vm, op, 0);
+}
+
+ee_parser_reply eei_rule_handler_group(eei_parser * parser, const eei_parser_node * node)
+{
+	//A group must end with exactly ONE new value on the runtime stack
+	const int items = parser->vm.current.stack - node->stack_top;
+
+	if (items == 1)
+		return ee_parser_ok;
+
+	if (items == 0)
+		return ee_parser_expression_empty_group;
+
+	return ee_parser_expression_overfull_group;
+}
+
+static inline ee_parser_reply eei_rule_handler_operator(
+		eei_parser * parser,
+		const eei_parser_node * node,
+		ee_function_flag flag,
+		ee_arity arity,
+		ee_parser_reply error
+		)
+{
+	const ee_function op =
+			eei_parse_symbols_get_function(
+				parser,
+				node,
+				arity,
+				((GET_RULE_TOKEN_TYPE(node->rule) == eei_token_operator) ? ee_function_flag_operator : 0),
+				flag,
+				0,
+				NULL);
+
+	if (!op)
+		return error;
+
+	return eei_vmmake_execute_functions(&parser->vm, op, arity);
+}
+
+ee_parser_reply eei_rule_handler_prefix(eei_parser * parser, const eei_parser_node * node)
+{
+	return eei_rule_handler_operator(parser, node, ee_function_flag_prefix, 1, ee_parser_prefix_not_implemented);
+}
+
+ee_parser_reply eei_rule_handler_infix(eei_parser * parser, const eei_parser_node * node)
+{
+	return eei_rule_handler_operator(parser, node, ee_function_flag_infix, 2, ee_parser_infix_not_implemented);
+}
+
+ee_parser_reply eei_rule_handler_postfix(eei_parser * parser, const eei_parser_node * node)
+{
+	return eei_rule_handler_operator(parser, node, ee_function_flag_postfix, 1, ee_parser_postfix_not_implemented);
+}
+
+ee_parser_reply eei_rule_handler_function(eei_parser * parser, const eei_parser_node * node)
+{
+	//Set the error token to the folded node, since we don't have the correct identifier yet
+	eei_parser_token error = {GET_RULE_TOKEN(node->rule), node->text};
+
+	//An identifier must be on the stack at this point
+	eei_parser_node identifier;
+
+	//Pop it since we're going to use it as the function name
+	ee_parser_reply reply = eei_parse_popT(parser, &identifier, &error);
+
+	if (reply != ee_parser_ok)
+		return reply;
+
+	//Now that the identifier is available change the possible error to that
+	error.token = GET_RULE_TOKEN(identifier.rule);
+	error.text = identifier.text;
+
+	//Make sure this is acutally an indentifier, or an operator if allowed, as theese are the only things curently supported
+	if (
+		(GET_RULE_TOKEN_TYPE(identifier.rule) != eei_token_identifier)
+#		if EEI_ALLOW_PREFIX_OPERATOR_FUNCTIONS
+		&& (GET_RULE_TOKEN_TYPE(identifier.rule) != eei_token_operator)
+#		endif
+		)
+		return eei_parse_set_error(
+					parser,
+					ee_parser_expression_identifier_expected,
+					&error);
+
+	//The arity is just the amount of items on the run-time stack added since the identifier itself was parsed
+	const ee_arity arity = (ee_arity)(parser->vm.current.stack - identifier.stack_top);
+
+	int wrong_arity = 0;
+	ee_function op =
+			eei_parse_symbols_get_function(
+				parser,
+				&identifier,
+				arity,
+				ee_function_flag_infix,
+				((GET_RULE_TOKEN_TYPE(identifier.rule) == eei_token_operator) ? ee_function_flag_operator : 0),
+				0,
+				&wrong_arity);
+
+	//In case of an error make sure we report exactly what happened
+	if (!op)
+		return eei_parse_set_error(
+					parser,
+					wrong_arity
+					? ee_parser_function_wrong_arity
+					: ee_parser_function_not_implemented,
+					&error);
+
+	return eei_vmmake_execute_functions(&parser->vm, op, arity);
+}
+
+ee_parser_reply eei_rule_handler_assign(eei_parser * parser, const eei_parser_node * node)
+{
+	//Set the error token to the folded node, since we don't have the correct identifier yet
+	eei_parser_token error = {GET_RULE_TOKEN(node->rule), node->text};
+
+	//An identifier must be on the stack at this point
+	eei_parser_node identifier;
+
+	//Pop it since we're going to use it as the LHS identifier
+	ee_parser_reply reply = eei_parse_popT(parser, &identifier, &error);
+
+	if (reply != ee_parser_ok)
+		return reply;
+
+	//Now that the identifier is available change the possible error to that
+	error.token = GET_RULE_TOKEN(identifier.rule);
+	error.text = identifier.text;
+
+	//Make sure this is acutally an indentifier as this is the only thing curently supported
+	if (GET_RULE_TOKEN_TYPE(identifier.rule) != eei_token_identifier)
+		return eei_parse_set_error(
+					parser,
+					ee_parser_expression_identifier_expected,
+					&error);
+
+	//Get the actual variable
+	ee_variable_type * var = eei_parse_symbols_get_variable(parser, &identifier);
+
+	//In case of an error make sure we report what happened
+	if (!var)
+		return eei_parse_set_error(
+					parser,
+					ee_parser_unknown_variable,
+					&error);
+
+	return eei_vmmake_store_variable(&parser->vm, var);
+}
+
+
 //Parser core functions
 //---------------------
-
-//Parser rule handler forward declarations
-//----------------------------------------
-ee_parser_reply eei_rule_handler_constant(eei_parser * parser, const eei_parser_node * node);
-ee_parser_reply eei_rule_handler_variable(eei_parser * parser, const eei_parser_node * node);
-ee_parser_reply eei_rule_handler_group(eei_parser * parser, const eei_parser_node * node);
-ee_parser_reply eei_rule_handler_prefix(eei_parser * parser, const eei_parser_node * node);
-ee_parser_reply eei_rule_handler_infix(eei_parser * parser, const eei_parser_node * node);
-ee_parser_reply eei_rule_handler_postfix(eei_parser * parser, const eei_parser_node * node);
-ee_parser_reply eei_rule_handler_function(eei_parser * parser, const eei_parser_node * node);
-ee_parser_reply eei_rule_handler_assign(eei_parser * parser, const eei_parser_node * node);
 
 ee_parser_reply eei_parse_done_node(eei_parser * parser, const eei_parser_node * node)
 {
@@ -1895,216 +2096,6 @@ void eei_parse_expression(eei_parser * parser)
 		parser->status = ee_parser_error;
 }
 
-
-//Parser handler functions
-//------------------------
-
-ee_parser_reply eei_rule_handler_constant(eei_parser * parser, const eei_parser_node * node)
-{
-	ee_variable_type constant;
-
-	if (EEI_CONSTANT_PARSER(
-			&parser->expression[node->text.start],
-			&parser->expression[node->text.end],
-			&constant) != 0)
-		return ee_parser_expression_not_a_constant;
-
-	return eei_vmmake_load_constant(&parser->vm, constant);
-}
-
-ee_parser_reply eei_rule_handler_variable(eei_parser * parser, const eei_parser_node * node)
-{
-	const ee_char_type * token_start = &parser->expression[node->text.start];
-	const ee_element_count token_length = node->text.end - node->text.start;
-
-	eei_symboltable_index index;
-
-	eei_symboltable_find_text(
-				&parser->symboltable,
-				token_start,
-				token_length,
-				&index);
-
-	//Look for the variable
-	eei_symboltable_get(
-				&parser->symboltable,
-				&index,
-				0,
-				0,
-				0,
-				~ee_function_flag_invalid);
-	ee_variable_type * var = eei_parse_symbols_get_variable_from_index(parser, &index);
-
-	//Look for a zero-arity function with the same name
-	eei_symboltable_get(
-				&parser->symboltable,
-				&index,
-				0,
-				0,
-				ee_function_flag_prefix,
-				0);
-	ee_function op = eei_parse_symbols_get_function_from_index(parser, &index);
-
-	if (var && op)
-		//Do not allow both to be defined to avoid confusion
-		return ee_parser_varfunction_duplicate;
-
-	if (!var && !op)
-		//None found - assume this should have been a variable
-		return ee_parser_unknown_variable;
-
-	if (var)
-		return eei_vmmake_load_variable(&parser->vm, var);
-	else
-		return eei_vmmake_execute_functions(&parser->vm, op, 0);
-}
-
-ee_parser_reply eei_rule_handler_group(eei_parser * parser, const eei_parser_node * node)
-{
-	//A group must end with exactly ONE new value on the runtime stack
-	const int items = parser->vm.current.stack - node->stack_top;
-
-	if (items == 1)
-		return ee_parser_ok;
-
-	if (items == 0)
-		return ee_parser_expression_empty_group;
-
-	return ee_parser_expression_overfull_group;
-}
-
-static inline ee_parser_reply eei_rule_handler_operator(
-		eei_parser * parser,
-		const eei_parser_node * node,
-		ee_function_flag flag,
-		ee_arity arity,
-		ee_parser_reply error
-		)
-{
-	const ee_function op =
-			eei_parse_symbols_get_function(
-				parser,
-				node,
-				arity,
-				((GET_RULE_TOKEN_TYPE(node->rule) == eei_token_operator) ? ee_function_flag_operator : 0),
-				flag,
-				0,
-				NULL);
-
-	if (!op)
-		return error;
-
-	return eei_vmmake_execute_functions(&parser->vm, op, arity);
-}
-
-ee_parser_reply eei_rule_handler_prefix(eei_parser * parser, const eei_parser_node * node)
-{
-	return eei_rule_handler_operator(parser, node, ee_function_flag_prefix, 1, ee_parser_prefix_not_implemented);
-}
-
-ee_parser_reply eei_rule_handler_infix(eei_parser * parser, const eei_parser_node * node)
-{
-	return eei_rule_handler_operator(parser, node, ee_function_flag_infix, 2, ee_parser_infix_not_implemented);
-}
-
-ee_parser_reply eei_rule_handler_postfix(eei_parser * parser, const eei_parser_node * node)
-{
-	return eei_rule_handler_operator(parser, node, ee_function_flag_postfix, 1, ee_parser_postfix_not_implemented);
-}
-
-ee_parser_reply eei_rule_handler_function(eei_parser * parser, const eei_parser_node * node)
-{
-	//Set the error token to the folded node, since we don't have the correct identifier yet
-	eei_parser_token error = {GET_RULE_TOKEN(node->rule), node->text};
-
-	//An identifier must be on the stack at this point
-	eei_parser_node identifier;
-
-	//Pop it since we're going to use it as the function name
-	ee_parser_reply reply = eei_parse_popT(parser, &identifier, &error);
-
-	if (reply != ee_parser_ok)
-		return reply;
-
-	//Now that the identifier is available change the possible error to that
-	error.token = GET_RULE_TOKEN(identifier.rule);
-	error.text = identifier.text;
-
-	//Make sure this is acutally an indentifier, or an operator if allowed, as theese are the only things curently supported
-	if (
-		(GET_RULE_TOKEN_TYPE(identifier.rule) != eei_token_identifier)
-#		if EEI_ALLOW_PREFIX_OPERATOR_FUNCTIONS
-		&& (GET_RULE_TOKEN_TYPE(identifier.rule) != eei_token_operator)
-#		endif
-		)
-		return eei_parse_set_error(
-					parser,
-					ee_parser_expression_identifier_expected,
-					&error);
-
-	//The arity is just the amount of items on the run-time stack added since the identifier itself was parsed
-	const ee_arity arity = (ee_arity)(parser->vm.current.stack - identifier.stack_top);
-
-	int wrong_arity = 0;
-	ee_function op =
-			eei_parse_symbols_get_function(
-				parser,
-				&identifier,
-				arity,
-				ee_function_flag_infix,
-				((GET_RULE_TOKEN_TYPE(identifier.rule) == eei_token_operator) ? ee_function_flag_operator : 0),
-				0,
-				&wrong_arity);
-
-	//In case of an error make sure we report exactly what happened
-	if (!op)
-		return eei_parse_set_error(
-					parser,
-					wrong_arity
-					? ee_parser_function_wrong_arity
-					: ee_parser_function_not_implemented,
-					&error);
-
-	return eei_vmmake_execute_functions(&parser->vm, op, arity);
-}
-
-ee_parser_reply eei_rule_handler_assign(eei_parser * parser, const eei_parser_node * node)
-{
-	//Set the error token to the folded node, since we don't have the correct identifier yet
-	eei_parser_token error = {GET_RULE_TOKEN(node->rule), node->text};
-
-	//An identifier must be on the stack at this point
-	eei_parser_node identifier;
-
-	//Pop it since we're going to use it as the LHS identifier
-	ee_parser_reply reply = eei_parse_popT(parser, &identifier, &error);
-
-	if (reply != ee_parser_ok)
-		return reply;
-
-	//Now that the identifier is available change the possible error to that
-	error.token = GET_RULE_TOKEN(identifier.rule);
-	error.text = identifier.text;
-
-	//Make sure this is acutally an indentifier as this is the only thing curently supported
-	if (GET_RULE_TOKEN_TYPE(identifier.rule) != eei_token_identifier)
-		return eei_parse_set_error(
-					parser,
-					ee_parser_expression_identifier_expected,
-					&error);
-
-	//Get the actual variable
-	ee_variable_type * var = eei_parse_symbols_get_variable(parser, &identifier);
-
-	//In case of an error make sure we report what happened
-	if (!var)
-		return eei_parse_set_error(
-					parser,
-					ee_parser_unknown_variable,
-					&error);
-
-	return eei_vmmake_store_variable(&parser->vm, var);
-}
 
 //Virtual machine execute
 //-----------------------
