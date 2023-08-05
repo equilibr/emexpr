@@ -818,7 +818,7 @@ const eei_rule_item * eei_find_rule(eei_token token, eei_rule_type expected, eei
 	//Find the rule of the expected type matching the given token
 	//Will return the sentinel rule on failure
 
-	const eei_rule_item * table;
+	const eei_rule_item * table = NULL;
 
 	switch (expected)
 	{
@@ -1214,10 +1214,11 @@ ee_parser_reply eei_vmmake_execute_functions(
 		vm->current.functions++;
 	}
 
-	//Update stack usage
-	if ((vm->current.stack + 1) < arity)
+	//Make sure the stack will hold enough elements
+	if (vm->current.stack < arity)
 		return ee_parser_stack_runtime_underflow;
 
+	//Update stack usage: "arity" elements will be popped and a single result pushed
 	vm->current.stack += 1 - arity;
 	if (vm->max.stack < vm->current.stack)
 		vm->max.stack = vm->current.stack;
@@ -1692,7 +1693,7 @@ void eei_parse_foldEndDilimiter(
 	int group = parser->currentGroup;
 
 	//Fold up to, but not including, this rule
-	//This will fold the synthetic gropup rule as well
+	//This will fold the synthetic group rule as well
 	++group;
 	while (parser->stack.top > group)
 	{
@@ -1705,19 +1706,22 @@ void eei_parse_foldEndDilimiter(
 	//	to the previous one, since the rule that created the current group is,
 	//	in itself, an element of the previous one, and must be folded as part of that.
 
+	//Account for the stack top pointing one element ABOVE the actual top.
 	group = parser->stack.top - 1;
 
-	//Special handling for the SOF token
+	//Special handling for the SOF token to avoid many check in the following code.
 	if (!group)
 	{
+		//This code is reached when a EOF token was encountered that correctly matched the
+		// SOF delimited rule that exists at the very bottom of the stack.
+		//The current group is now a lie but we can stil fold this rule, thus completely clearing the stack.
 		parser->currentGroup = 0;
 		eei_parse_done(parser);
 		return;
 	}
 
 	//Walk the stack back and find the previous group.
-	//Make sure that, at least, the initial group remains.
-	//Pre-decrementing skips the current top, that we know is not a group rule
+	//Pre-decrementing skips the current top, that we know is not a group rule!
 	while (--group > 0)
 		if (parser->stack.stack[group].rule == &eei_parser_group_rule)
 			break;
@@ -1732,7 +1736,8 @@ void eei_parse_foldEndDilimiter(
 	//We need the rule that created the previous group, not the synthetic group itself.
 	parser->currentGroup = group - 1;
 
-	//Fold the rule that created the group.
+	//At this point the current group is the one the top rule was created in so we can
+	//	fold the rule that created the just-folded group.
 	eei_parse_done(parser);
 	if (parser->status != ee_parser_ok)
 		return;
@@ -1745,7 +1750,7 @@ void eei_parse_foldEndDilimiter(
 	}
 
 	//The token is an end delimiter - that was just completely processed.
-	//This means the node can be treated as a postfix -
+	//This means the folded node can be treated as a postfix -
 	//	so an infix must follow
 	eei_stack_top(&parser->stack,0)->next = eei_rule_infix;
 }
@@ -1886,7 +1891,13 @@ ee_parser_reply eei_rule_handler_variable(eei_parser * parser, const eei_parser_
 				&index);
 
 	//Look for the variable
-	eei_symboltable_get(&parser->symboltable, &index,0,0,0,~ee_function_flag_invalid);
+	eei_symboltable_get(
+				&parser->symboltable,
+				&index,
+				0,
+				0,
+				0,
+				~ee_function_flag_invalid);
 	ee_variable_type * var = eei_parse_symbols_get_variable_from_index(parser, &index);
 
 	//Look for a zero-arity function with the same name
@@ -1900,20 +1911,17 @@ ee_parser_reply eei_rule_handler_variable(eei_parser * parser, const eei_parser_
 	ee_function op = eei_parse_symbols_get_function_from_index(parser, &index);
 
 	if (var && op)
-		//We do not allow both to be defined to avoid confusion
+		//Do not allow both to be defined to avoid confusion
 		return ee_parser_varfunction_duplicate;
 
 	if (!var && !op)
-		//Assume this should have been a variable
+		//None found - assume this should have been a variable
 		return ee_parser_unknown_variable;
 
 	if (var)
 		return eei_vmmake_load_variable(&parser->vm, var);
-
-	if (op)
+	else
 		return eei_vmmake_execute_functions(&parser->vm, op, 0);
-
-	return ee_parser_error;
 }
 
 ee_parser_reply eei_rule_handler_group(eei_parser * parser, const eei_parser_node * node)
@@ -1930,74 +1938,62 @@ ee_parser_reply eei_rule_handler_group(eei_parser * parser, const eei_parser_nod
 	return ee_parser_expression_overfull_group;
 }
 
-ee_parser_reply eei_rule_handler_prefix(eei_parser * parser, const eei_parser_node * node)
+inline ee_parser_reply eei_rule_handler_operator(
+		eei_parser * parser,
+		const eei_parser_node * node,
+		ee_function_flag flag,
+		ee_arity arity,
+		ee_parser_reply error
+		)
 {
-	ee_function op =
+	const ee_function op =
 			eei_parse_symbols_get_function(
 				parser,
 				node,
-				1,
+				arity,
 				((GET_RULE_TOKEN_TYPE(node->rule->rule) == eei_token_operator) ? ee_function_flag_operator : 0),
-				ee_function_flag_prefix,
+				flag,
 				0,
 				NULL);
 
 	if (!op)
-		return ee_parser_prefix_not_implemented;
+		return error;
 
-	return eei_vmmake_execute_functions(&parser->vm, op, 1);
+	return eei_vmmake_execute_functions(&parser->vm, op, arity);
+}
+
+ee_parser_reply eei_rule_handler_prefix(eei_parser * parser, const eei_parser_node * node)
+{
+	return eei_rule_handler_operator(parser, node, ee_function_flag_prefix, 1, ee_parser_prefix_not_implemented);
 }
 
 ee_parser_reply eei_rule_handler_infix(eei_parser * parser, const eei_parser_node * node)
 {
-	ee_function op =
-			eei_parse_symbols_get_function(
-				parser,
-				node,
-				2,
-				((GET_RULE_TOKEN_TYPE(node->rule->rule) == eei_token_operator) ? ee_function_flag_operator : 0),
-				ee_function_flag_infix,
-				0,
-				NULL);
-
-	if (!op)
-		return ee_parser_infix_not_implemented;
-
-	return eei_vmmake_execute_functions(&parser->vm, op, 2);
+	return eei_rule_handler_operator(parser, node, ee_function_flag_infix, 2, ee_parser_infix_not_implemented);
 }
 
 ee_parser_reply eei_rule_handler_postfix(eei_parser * parser, const eei_parser_node * node)
 {
-	ee_function op =
-			eei_parse_symbols_get_function(
-				parser,
-				node,
-				1,
-				((GET_RULE_TOKEN_TYPE(node->rule->rule) == eei_token_operator) ? ee_function_flag_operator : 0),
-				ee_function_flag_postfix,
-				0,
-				NULL);
-
-	if (!op)
-		return ee_parser_postfix_not_implemented;
-
-	return eei_vmmake_execute_functions(&parser->vm, op, 1);
+	return eei_rule_handler_operator(parser, node, ee_function_flag_postfix, 1, ee_parser_postfix_not_implemented);
 }
 
 ee_parser_reply eei_rule_handler_function(eei_parser * parser, const eei_parser_node * node)
 {
+	//Set the error token to the folded node, since we don't have the correct identifier yet
+	eei_parser_token error = {GET_RULE_TOKEN(node->rule->rule), node->text};
+
 	//An identifier must be on the stack at this point
 	eei_parser_node identifier;
 
 	//Pop it since we're going to use it as the function name
-	ee_parser_reply reply =
-			eei_parse_popT(
-				parser,
-				&identifier,
-				&((eei_parser_token){GET_RULE_TOKEN(node->rule->rule), node->text}));
+	ee_parser_reply reply = eei_parse_popT(parser, &identifier, &error);
 
 	if (reply != ee_parser_ok)
 		return reply;
+
+	//Now that the identifier is available change the possible error to that
+	error.token = GET_RULE_TOKEN(identifier.rule->rule);
+	error.text = identifier.text;
 
 	//Make sure this is acutally an indentifier, or an operator if allowed, as theese are the only things curently supported
 	if (
@@ -2009,7 +2005,7 @@ ee_parser_reply eei_rule_handler_function(eei_parser * parser, const eei_parser_
 		return eei_parse_set_error(
 					parser,
 					ee_parser_expression_identifier_expected,
-					&((eei_parser_token){GET_RULE_TOKEN(identifier.rule->rule), identifier.text}));
+					&error);
 
 	//The arity is just the amount of items on the run-time stack added since the identifier itself was parsed
 	const ee_arity arity = (ee_arity)(parser->vm.current.stack - identifier.stack_top);
@@ -2025,39 +2021,42 @@ ee_parser_reply eei_rule_handler_function(eei_parser * parser, const eei_parser_
 				0,
 				&wrong_arity);
 
-	//In case of an error make sure we report what happened
+	//In case of an error make sure we report exactly what happened
 	if (!op)
 		return eei_parse_set_error(
 					parser,
 					wrong_arity
 					? ee_parser_function_wrong_arity
 					: ee_parser_function_not_implemented,
-					&((eei_parser_token){GET_RULE_TOKEN(identifier.rule->rule), identifier.text}));
+					&error);
 
 	return eei_vmmake_execute_functions(&parser->vm, op, arity);
 }
 
 ee_parser_reply eei_rule_handler_assign(eei_parser * parser, const eei_parser_node * node)
 {
+	//Set the error token to the folded node, since we don't have the correct identifier yet
+	eei_parser_token error = {GET_RULE_TOKEN(node->rule->rule), node->text};
+
 	//An identifier must be on the stack at this point
 	eei_parser_node identifier;
 
 	//Pop it since we're going to use it as the LHS identifier
-	ee_parser_reply reply =
-			eei_parse_popT(
-				parser,
-				&identifier,
-				&((eei_parser_token){GET_RULE_TOKEN(node->rule->rule), node->text}));
+	ee_parser_reply reply = eei_parse_popT(parser, &identifier, &error);
 
 	if (reply != ee_parser_ok)
 		return reply;
+
+	//Now that the identifier is available change the possible error to that
+	error.token = GET_RULE_TOKEN(identifier.rule->rule);
+	error.text = identifier.text;
 
 	//Make sure this is acutally an indentifier as this is the only thing curently supported
 	if (GET_RULE_TOKEN_TYPE(identifier.rule->rule) != eei_token_identifier)
 		return eei_parse_set_error(
 					parser,
 					ee_parser_expression_identifier_expected,
-					&((eei_parser_token){GET_RULE_TOKEN(identifier.rule->rule), identifier.text}));
+					&error);
 
 	//Get the actual variable
 	ee_variable_type * var = eei_parse_symbols_get_variable(parser, &identifier);
@@ -2067,7 +2066,7 @@ ee_parser_reply eei_rule_handler_assign(eei_parser * parser, const eei_parser_no
 		return eei_parse_set_error(
 					parser,
 					ee_parser_unknown_variable,
-					&((eei_parser_token){GET_RULE_TOKEN(identifier.rule->rule), identifier.text}));
+					&error);
 
 	return eei_vmmake_store_variable(&parser->vm, var);
 }
