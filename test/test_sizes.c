@@ -98,6 +98,15 @@ static void test_print_header()
 {
 	printf(
 				"%20s   %8s %16s %10s "
+				"%-41s "
+				"%-41s "
+				"\n",
+				"","","","",
+				"final parsed sizes",
+				"guestimated overhead");
+
+	printf(
+				"%20s   %8s %16s %10s "
 				"%5s %4s %5s %5s %3s %3s %2s %5s   "
 				"%5s %4s %5s %5s %3s %3s %2s %5s   "
 				"%5s %5s %s\n",
