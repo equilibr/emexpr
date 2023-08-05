@@ -682,11 +682,11 @@ enum
 
 static const eei_rule_item eei_parser_prefix_rules[] =
 {
-	//Expression start
-	STATE(MAKE_DELIMITED_PREFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_sof))),
-
 	HANDLE(MAKE_TERMINAL_PREFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_constant),eei_rule_normal_fold), eei_rule_handler_constant),
 	HANDLE(MAKE_TERMINAL_PREFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_identifier),eei_rule_delay_fold), eei_rule_handler_variable),
+
+	//Catch-all for all operators
+	HANDLE(MAKE_DELAYED_PREFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_operator)), eei_rule_handler_prefix),
 
 #	if EEI_ALLOW_PREFIX_OPERATOR_FUNCTIONS
 	//Prefix-operator call
@@ -696,8 +696,8 @@ static const eei_rule_item eei_parser_prefix_rules[] =
 	//Grouping parens
 	HANDLE(MAKE_DELIMITED_PREFIX_RULE(MAKE_TOKEN(eei_token_delimiter,'(')), eei_rule_handler_group),
 
-	//Catch-all for all operators
-	HANDLE(MAKE_DELAYED_PREFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_operator)), eei_rule_handler_prefix),
+	//Expression start
+	STATE(MAKE_DELIMITED_PREFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_sof))),
 
 	STATE(MAKE_SENTINEL_RULE())
 };
@@ -760,12 +760,6 @@ static const eei_look_behind_table_item eei_parser_lookbehind_rules[] =
 
 static const eei_end_rules_table_item eei_parser_end_rules[] =
 {
-	//Expression end
-	{
-		MAKE_DELIMITED_PREFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_sof)),
-		MAKE_END_RULE(MAKE_SIMPLE_TOKEN(eei_token_eof))
-	},
-
 	//Grouping parens
 	{
 		MAKE_DELIMITED_PREFIX_RULE(MAKE_TOKEN(eei_token_delimiter,'(')),
@@ -776,6 +770,12 @@ static const eei_end_rules_table_item eei_parser_end_rules[] =
 	{
 		MAKE_DELIMITED_INFIX_RULE(MAKE_TOKEN(eei_token_delimiter,'('), eei_precedence_function),
 		MAKE_END_RULE(MAKE_TOKEN(eei_token_delimiter,')'))
+	},
+
+	//Expression end
+	{
+		MAKE_DELIMITED_PREFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_sof)),
+		MAKE_END_RULE(MAKE_SIMPLE_TOKEN(eei_token_eof))
 	},
 
 	{MAKE_SENTINEL_RULE(),MAKE_SENTINEL_END_RULE()}

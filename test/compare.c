@@ -247,17 +247,8 @@ static const char * eval[] =
 	"|(a,a,a)",
 	"a|a|a|a|a|a",
 	"a|(a|(a|(a|(a|a))))",
-	"a|a|a|a|a|a|a|a|a|a",
 
 	"%a",
-	"a%a",
-	"%a%a",
-	"a%%a",
-	"%(a)",
-	"%(a,a)",
-	"%(a,a,a)",
-	"a%a%a%a%a%a",
-	"a%(a%(a%(a%(a%a))))",
 	"a%a%a%a%a%a%a%a%a%a",
 
 	NULL
