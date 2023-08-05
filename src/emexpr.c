@@ -629,7 +629,7 @@ typedef enum
 #define MAKE_SENTINEL_END_RULE() MAKE_END_RULE(MAKE_SIMPLE_TOKEN(eei_token_error))
 
 //Make a special rule that marks parsing groups
-#define MAKE_GROUP_RULE() MAKE_DELIMITED_INFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_group),0)
+#define MAKE_GROUP_RULE() MAKE_DEFAULT_INFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_group),0)
 
 //Create a rule than only represents state
 #define STATE(rule) {rule, (eei_rule_handler)NULL}
@@ -782,7 +782,7 @@ static const eei_end_rules_table_item eei_parser_end_rules[] =
 };
 
 //A group rule description for internal use
-static const eei_rule_item eei_parser_group_rule = STATE(MAKE_DEFAULT_INFIX_RULE(eei_token_group,0));
+static const eei_rule_item eei_parser_group_rule = STATE(MAKE_GROUP_RULE());
 
 //A sentinel rule description to use as a return value when needed
 static const eei_rule_item eei_parser_sentinel_rule = STATE(MAKE_SENTINEL_RULE());
@@ -1938,7 +1938,7 @@ ee_parser_reply eei_rule_handler_group(eei_parser * parser, const eei_parser_nod
 	return ee_parser_expression_overfull_group;
 }
 
-inline ee_parser_reply eei_rule_handler_operator(
+static inline ee_parser_reply eei_rule_handler_operator(
 		eei_parser * parser,
 		const eei_parser_node * node,
 		ee_function_flag flag,

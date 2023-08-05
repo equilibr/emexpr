@@ -242,7 +242,7 @@ static const ee_symboltable_function eei_operators_library[] =
 //Symbol table lookup
 //-------------------
 
-inline void eei_symboltable_invalidate_index(eei_symboltable_index * index, int level)
+static inline void eei_symboltable_invalidate_index(eei_symboltable_index * index, int level)
 {
 	if (level <= 1)
 		index->first = -1;
@@ -254,7 +254,7 @@ inline void eei_symboltable_invalidate_index(eei_symboltable_index * index, int 
 		index->third = -1;
 }
 
-inline ee_element_count eei_symboltable_count_third(const eei_symboltable * st, int index)
+static inline ee_element_count eei_symboltable_count_third(const eei_symboltable * st, int index)
 {
 	if (index + 1 < st->used->second_level)
 		return st->second.next[index+1] - st->second.next[index];
@@ -420,7 +420,7 @@ ee_symboltable_reply eei_symboltable_get(
 //Symbol table building
 //---------------------
 
-inline ee_symboltable_reply eei_symboltable_add_textbook(
+static inline ee_symboltable_reply eei_symboltable_add_textbook(
 		eei_symboltable * st,
 		const ee_char_type * start,
 		ee_element_count length,
@@ -519,7 +519,7 @@ inline ee_symboltable_reply eei_symboltable_add_textbook(
 	return ee_symboltable_ok;
 }
 
-inline ee_symboltable_reply eei_symboltable_add_text(
+static inline ee_symboltable_reply eei_symboltable_add_text(
 		eei_symboltable * st,
 		const ee_char_type * start,
 		ee_element_count length,
@@ -605,7 +605,7 @@ inline ee_symboltable_reply eei_symboltable_add_text(
 	return ee_symboltable_ok;
 }
 
-inline ee_symboltable_reply eei_symboltable_add_third(
+static inline ee_symboltable_reply eei_symboltable_add_third(
 		eei_symboltable * st,
 		eei_symboltable_index * index,
 		const ee_char_type * start,
