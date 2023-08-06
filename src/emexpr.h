@@ -203,6 +203,9 @@ typedef enum
 	//	although one is expected.
 	ee_parser_noresult,
 
+	//A bad input was encountered
+	ee_parser_bad_input,
+
 	//Generic stack related error
 	ee_parser_stack_error,
 

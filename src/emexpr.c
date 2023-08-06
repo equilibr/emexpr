@@ -203,14 +203,17 @@ enum
 };
 
 //Create a token from its parts
-#define MAKE_TOKEN(token_type, token_symbol) \
+#define TOKEN(token_type, token_symbol) \
 	(eei_token)(\
 	MAKE_PART_BITS(token_type, eei_token_bits_type_offset, eei_token_bits_type_size) |\
 	MAKE_PART_BITS(token_symbol, eei_token_bits_char_offset, eei_token_bits_char_size) \
 	)
 
 //Create a simple token that does not use the symbol
-#define MAKE_SIMPLE_TOKEN(token_type) MAKE_TOKEN(token_type, token_symbol_any)
+#define SIMPLE_TOKEN(token_type) TOKEN(token_type, token_symbol_any)
+
+//An error token
+#define ERROR_TOKEN() SIMPLE_TOKEN(eei_token_error)
 
 //Extract token data from a token
 #define GET_TOKEN_TYPE(token) (eei_token_type)GET_PART_BITS(token, eei_token_bits_type_offset, eei_token_bits_type_size)
@@ -335,7 +338,7 @@ eei_token eei_lexer_next_token(eei_lexer_state * state)
 	state->start = state->head;
 
 	if (eei_lexer_is_eof(*state->head))
-		return MAKE_SIMPLE_TOKEN(eei_token_eof);
+		return SIMPLE_TOKEN(eei_token_eof);
 
 	//The first character determines the token class
 
@@ -344,20 +347,20 @@ eei_token eei_lexer_next_token(eei_lexer_state * state)
 		state->head = EEI_CONSTANT_SCANNER(state->head);
 
 		if (state->head != state->start)
-			return MAKE_SIMPLE_TOKEN(eei_token_constant);
+			return SIMPLE_TOKEN(eei_token_constant);
 	}
 
 	if (eei_lexer_is_alpha(*state->head))
 	{
 		eei_lexer_consume_identifier(state);
-		return MAKE_SIMPLE_TOKEN(eei_token_identifier);
+		return SIMPLE_TOKEN(eei_token_identifier);
 	}
 
 	if (eei_lexer_is_delimiter(*state->head))
 	{
 		//Delimiters are always single character
 		state->head++;
-		return MAKE_TOKEN(eei_token_delimiter, *state->start);
+		return TOKEN(eei_token_delimiter, *state->start);
 	}
 
 	if (eei_lexer_is_operator(*state->head))
@@ -374,13 +377,13 @@ eei_token eei_lexer_next_token(eei_lexer_state * state)
 			//If this is a known double-character operator it consumes another char
 			state->head++;
 
-			return MAKE_TOKEN(eei_token_operator, op);
+			return TOKEN(eei_token_operator, op);
 		}
 
-		return MAKE_TOKEN(eei_token_operator, *state->start);
+		return TOKEN(eei_token_operator, *state->start);
 	}
 
-	return MAKE_SIMPLE_TOKEN(eei_token_error);
+	return ERROR_TOKEN();
 }
 
 //Parser rule types
@@ -491,6 +494,9 @@ typedef enum
 	//Rule description look behind flag. Single bit.
 	eei_rule_bits_look_behind_size = 1,
 
+	//Rule description in-group flag. Single bit.
+	eei_rule_bits_grouped_size = 1,
+
 	//Rule handler index. Must accomodate eei_rule_handler (without the sentinel).
 	eei_rule_bits_handler_size = 4,
 
@@ -549,8 +555,11 @@ typedef enum
 	//Offset for the look behind flag of a rule description
 	eei_rule_bits_look_behind_offset = eei_rule_bits_fold_offset + eei_rule_bits_fold_size,
 
+	//Offset for the in-group flag of a rule description
+	eei_rule_bits_grouped_offset =  eei_rule_bits_look_behind_offset + eei_rule_bits_look_behind_size,
+
 	//Offset for the handler part of a rule description
-	eei_rule_bits_handler_offset = eei_rule_bits_look_behind_offset + eei_rule_bits_look_behind_size,
+	eei_rule_bits_handler_offset = eei_rule_bits_grouped_offset + eei_rule_bits_grouped_size,
 
 	//Total size of a rule description, in bits
 	//The _check_type_sizes struct uses this to validate all parts fit in the data type used for the rule description
@@ -566,83 +575,83 @@ typedef enum
 	)
 
 //Create a rule description from its parts
-#define MAKE_RULE_DESCRIPTION(rule, precedence, next, accosiativity, end_delimiter, fold, look_behind, handler) \
+#define MAKE_RULE_DESCRIPTION(rule, precedence, next, accosiativity) \
 	(eei_rule_description)(\
 	MAKE_PART_BITS(rule, eei_rule_bits_rule_offset, eei_rule_bits_rule_size) |\
 	MAKE_PART_BITS(precedence, eei_rule_bits_precedence_offset, eei_rule_bits_precedence_size) |\
 	MAKE_PART_BITS(next, eei_rule_bits_next_offset, eei_rule_bits_next_size) |\
-	MAKE_PART_BITS(accosiativity, eei_rule_bits_accosiativity_offset, eei_rule_bits_accosiativity_size) |\
-	MAKE_PART_BITS(end_delimiter, eei_rule_bits_end_delimiter_offset, eei_rule_bits_end_delimiter_size) |\
-	MAKE_PART_BITS(fold, eei_rule_bits_fold_offset, eei_rule_bits_fold_size) |\
-	MAKE_PART_BITS(look_behind, eei_rule_bits_look_behind_offset, eei_rule_bits_look_behind_size) |\
-	MAKE_PART_BITS(handler, eei_rule_bits_handler_offset, eei_rule_bits_handler_size)\
+	MAKE_PART_BITS(accosiativity, eei_rule_bits_accosiativity_offset, eei_rule_bits_accosiativity_size)\
 	)
 
-//Make a prefix rule description
-#define MAKE_PREFIX_RULE(token, end_delimiter, fold, look_behind, next) \
-	MAKE_RULE_DESCRIPTION(MAKE_RULE(token, eei_rule_prefix), 0, next, eei_rule_right, end_delimiter, fold, look_behind, eei_rule_handle_none)
 
-//Make a default prefix rule description
-#define MAKE_DEFAULT_PREFIX_RULE(token) MAKE_PREFIX_RULE(token, 0, eei_rule_normal_fold, 0, eei_rule_prefix)
+//Basic rule descriptoins
 
-//Make a default-delayed prefix rule description
-#define MAKE_DELAYED_PREFIX_RULE(token) MAKE_PREFIX_RULE(token, 0, eei_rule_delay_fold, 0, eei_rule_prefix)
+//A terminal prefix rule
+#define TERMINAL(token) MAKE_RULE_DESCRIPTION(MAKE_RULE((token), eei_rule_prefix), 0, eei_rule_infix, eei_rule_right)
 
-//Make a leaf prefix rule description
-#define MAKE_TERMINAL_PREFIX_RULE(token, fold) MAKE_PREFIX_RULE(token, 0, fold, 0, eei_rule_infix)
+//A non-terminal prefix rule
+#define PREFIX(token) MAKE_RULE_DESCRIPTION(MAKE_RULE((token), eei_rule_prefix), 0, eei_rule_prefix, eei_rule_right)
 
-//Make a prefix rule with a look-behind condition description
+//A regular left-binding infix rule
+#define INFIX(token, precedence) MAKE_RULE_DESCRIPTION(MAKE_RULE((token), eei_rule_infix), (precedence), eei_rule_prefix, eei_rule_left)
+
+//A regular right-binding infix rule
+#define RIGHTINFIX(token, precedence) MAKE_RULE_DESCRIPTION(MAKE_RULE((token), eei_rule_infix), (precedence), eei_rule_prefix, eei_rule_right)
+
+//A regular left-biding postfix rule
+#define POSTFIX(token) MAKE_RULE_DESCRIPTION(MAKE_RULE((token), eei_rule_postfix), eei_precedence_postfix, eei_rule_infix, eei_rule_left)
+
+
+//Rule description modifiers
+
+//A rule that starts a group with (end) delimiters, with it own precedence stack
+#define DELIMITED(rule_description) ((eei_rule_description)( (rule_description) |\
+	MAKE_PART_BITS(1, eei_rule_bits_end_delimiter_offset, eei_rule_bits_end_delimiter_size)))
+
+//A rule that is not folded when a delimited rule prefix-folds
+#define DELAYED(rule_description) ((eei_rule_description)( (rule_description) |\
+	MAKE_PART_BITS(eei_rule_delay_fold, eei_rule_bits_fold_offset, eei_rule_bits_fold_size)))
+
+//A rule that does not folds the stack prefixes
+#define NOFOLD(rule_description) ((eei_rule_description)( (rule_description) |\
+	MAKE_PART_BITS(eei_rule_no_fold, eei_rule_bits_fold_offset, eei_rule_bits_fold_size)))
+
+//A rule with a look-behind condition
 //The matching rule MUST appear in the look-behind table
-#define MAKE_LOOK_BEHIND_PREFIX_RULE(token) MAKE_PREFIX_RULE(token, 0, eei_rule_normal_fold, 1, eei_rule_prefix)
+#define LOOKBEHIND(rule_description) ((eei_rule_description)( (rule_description) |\
+	MAKE_PART_BITS(1, eei_rule_bits_look_behind_offset, eei_rule_bits_look_behind_size)))
 
-//Make a delimited prefix rule description
-//The matching rule MUST appear in the end-rules table
-#define MAKE_DELIMITED_PREFIX_RULE(token) MAKE_PREFIX_RULE(token, 1, eei_rule_normal_fold, 0, eei_rule_prefix)
+//A rule with a grouped condition
+//The matching rule MUST appear in the look-behind table
+#define GROUPED(rule_description) ((eei_rule_description)( (rule_description) |\
+	MAKE_PART_BITS(1, eei_rule_bits_grouped_offset, eei_rule_bits_grouped_size)))
 
-//Make a infix rule description
-#define MAKE_INFIX_RULE(token, precedence, accosiativity, end_delimiter) \
-	MAKE_RULE_DESCRIPTION(MAKE_RULE(token, eei_rule_infix), precedence, eei_rule_prefix, accosiativity, end_delimiter, eei_rule_normal_fold, 0, eei_rule_handle_none)
+//A rule with a folding handle
+#define HANDLE(rule_description, handler) ((eei_rule_description)( (rule_description) |\
+	MAKE_PART_BITS(handler, eei_rule_bits_handler_offset, eei_rule_bits_handler_size)))
 
-//Make a default infix rule description
-#define MAKE_DEFAULT_INFIX_RULE(token, precedence) MAKE_INFIX_RULE(token, precedence, eei_rule_left, 0)
 
-//Make a default infix rule description
-#define MAKE_NOFOLD_INFIX_RULE(token, precedence) \
-	MAKE_RULE_DESCRIPTION(MAKE_RULE(token, eei_rule_infix), precedence, eei_rule_prefix, eei_rule_left, 0, eei_rule_no_fold, 0, eei_rule_handle_none)
+//Special rules
 
-//Make a delimited infix rule description
-//The matching rule MUST appear in the end-rules table
-#define MAKE_DELIMITED_INFIX_RULE(token, precedence) MAKE_INFIX_RULE(token, precedence, eei_rule_right, 1)
+//A rule for the END table
+#define END_RULE(token) MAKE_RULE_DESCRIPTION(MAKE_RULE((token), eei_rule_end), 0, eei_rule_prefix, eei_rule_left)
 
-//Make a default postfix rule description
-#define MAKE_POSTFIX_RULE(token, precedence) \
-	MAKE_RULE_DESCRIPTION(MAKE_RULE(token, eei_rule_postfix), precedence, eei_rule_infix, eei_rule_left, 0, eei_rule_normal_fold, 0, eei_rule_handle_none)
+#define END_SENTINEL_RULE() MAKE_RULE_DESCRIPTION(MAKE_RULE(ERROR_TOKEN(), eei_rule_end), 0, eei_rule_prefix, eei_rule_left)
 
-//Make an end rule to match a delimited rule description
-#define MAKE_END_RULE(token) \
-	MAKE_RULE_DESCRIPTION(MAKE_RULE(token, eei_rule_end), 0, eei_rule_prefix, eei_rule_left, 0, eei_rule_normal_fold, 0, eei_rule_handle_none)
+//A sentinel invalid rule to mark the end of a rules table
+#define SENTINEL_RULE() PREFIX(ERROR_TOKEN())
 
-//Make a sentinel invalid rule to mark the end of a rules table
-#define MAKE_SENTINEL_RULE() MAKE_DEFAULT_PREFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_error))
-#define MAKE_SENTINEL_END_RULE() MAKE_END_RULE(MAKE_SIMPLE_TOKEN(eei_token_error))
+//A special rule to mark the start of the expression
+#define SOF_RULE() DELIMITED(PREFIX(SIMPLE_TOKEN(eei_token_sof)))
 
-//Make a special rule that marks parsing groups
-#define MAKE_GROUP_RULE() MAKE_DEFAULT_INFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_group),0)
-
-//Create a rule than only represents state
-#define STATE(rule_description) rule_description
-
-//Create a rule with a handler
-#define HANDLE(rule_description, handler) \
-	MAKE_PART_BITS(rule_description, eei_rule_bits_start_offset, eei_rule_bits_total_size) |\
-	MAKE_PART_BITS(handler, eei_rule_bits_handler_offset, eei_rule_bits_handler_size)
-
+//A special rule that marks parsing groups
+#define GROUP_RULE() INFIX(SIMPLE_TOKEN(eei_token_group),eei_precedence_lowest)
 
 
 //Macros to simplify working with a ruleset
 
 //Test if the rule is valid
-#define IS_RULE_VALID(rule) ((rule) != MAKE_SENTINEL_RULE())
+#define IS_RULE_VALID(rule) ((rule) != SENTINEL_RULE())
 
 #define GET_RULE_TYPE(rule) (eei_rule_type)GET_PART_BITS(rule, eei_rule_bits_type_offset, eei_rule_bits_type_size)
 #define GET_RULE_PRECEDENCE(rule) (eei_precedence)GET_PART_BITS(rule, eei_rule_bits_precedence_offset, eei_rule_bits_precedence_size)
@@ -651,6 +660,7 @@ typedef enum
 #define GET_RULE_ENDDELIMITER(rule) GET_PART_BITS(rule, eei_rule_bits_end_delimiter_offset, eei_rule_bits_end_delimiter_size)
 #define GET_RULE_FOLD(rule) (eei_rule_fold)GET_PART_BITS(rule, eei_rule_bits_fold_offset, eei_rule_bits_fold_size)
 #define GET_RULE_LOOK_BEHIND(rule) GET_PART_BITS(rule, eei_rule_bits_look_behind_offset, eei_rule_bits_look_behind_size)
+#define GET_RULE_GROUPED(rule) GET_PART_BITS(rule, eei_rule_bits_grouped_offset, eei_rule_bits_grouped_size)
 #define GET_RULE_HANDLER(rule) GET_PART_BITS(rule, eei_rule_bits_handler_offset, eei_rule_bits_handler_size)
 
 //Extract a token and data from a rule description
@@ -684,67 +694,67 @@ enum
 };
 
 static const eei_rule_description eei_parser_prefix_rules[] =
-{
-	HANDLE(MAKE_TERMINAL_PREFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_constant),eei_rule_normal_fold), eei_rule_handle_constant),
-	HANDLE(MAKE_TERMINAL_PREFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_identifier),eei_rule_delay_fold), eei_rule_handle_variable),
+{	
+	HANDLE(TERMINAL(SIMPLE_TOKEN(eei_token_constant)),eei_rule_handle_constant),
+	HANDLE(DELAYED(TERMINAL(SIMPLE_TOKEN(eei_token_identifier))),eei_rule_handle_variable),
 
 	//Catch-all for all operators
-	HANDLE(MAKE_DELAYED_PREFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_operator)), eei_rule_handle_prefix),
+	HANDLE(DELAYED(PREFIX(SIMPLE_TOKEN(eei_token_operator))),eei_rule_handle_prefix),
 
 #	if EEI_ALLOW_PREFIX_OPERATOR_FUNCTIONS
 	//Prefix-operator call
-	STATE(MAKE_LOOK_BEHIND_PREFIX_RULE(MAKE_TOKEN(eei_token_delimiter,'('))),
+	LOOKBEHIND(PREFIX(TOKEN(eei_token_delimiter,'('))),
 #	endif
 
 	//Grouping parens
-	HANDLE(MAKE_DELIMITED_PREFIX_RULE(MAKE_TOKEN(eei_token_delimiter,'(')), eei_rule_handle_group),
+	HANDLE(DELIMITED(PREFIX(TOKEN(eei_token_delimiter,'('))), eei_rule_handle_group),
 
-	//Expression start
-	STATE(MAKE_DELIMITED_PREFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_sof))),
-
-	STATE(MAKE_SENTINEL_RULE())
+	SOF_RULE(),
+	SENTINEL_RULE()
 };
 
 static const eei_rule_description eei_parser_infix_rules[] =
 {
 #	if EEI_ALLOW_ASSIGN
 	//Variable assignment
-	HANDLE(MAKE_NOFOLD_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'='), eei_precedence_assign), eei_rule_handle_assign),
+	HANDLE(NOFOLD(INFIX(TOKEN(eei_token_operator,'='), eei_precedence_assign)), eei_rule_handle_assign),
 #	endif
 
 	//Sequence delimiter
-	STATE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_delimiter,','), eei_precedence_comma)),
+	INFIX(TOKEN(eei_token_delimiter,','), eei_precedence_comma),
 
 	//Function call
-	HANDLE(MAKE_DELIMITED_INFIX_RULE(MAKE_TOKEN(eei_token_delimiter,'('), eei_precedence_function), eei_rule_handle_function),
+	HANDLE(DELIMITED(INFIX(TOKEN(eei_token_delimiter,'('), eei_precedence_function)), eei_rule_handle_function),
 
 	//Normal operators
-	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,token_symbol_op_or), eei_precedence_logical_or), eei_rule_handle_infix),
-	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,token_symbol_op_xor), eei_precedence_logical_or), eei_rule_handle_infix),
-	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,token_symbol_op_and), eei_precedence_logical_and), eei_rule_handle_infix),
-	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'<'), eei_precedence_compare), eei_rule_handle_infix),
-	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'>'), eei_precedence_compare), eei_rule_handle_infix),
-	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,token_symbol_op_eq), eei_precedence_compare), eei_rule_handle_infix),
-	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,token_symbol_op_neq), eei_precedence_compare), eei_rule_handle_infix),
-	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,token_symbol_op_gte), eei_precedence_compare), eei_rule_handle_infix),
-	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,token_symbol_op_lte), eei_precedence_compare), eei_rule_handle_infix),
-	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'+'), eei_precedence_power1), eei_rule_handle_infix),
-	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'-'), eei_precedence_power1), eei_rule_handle_infix),
-	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'|'), eei_precedence_power1), eei_rule_handle_infix),
-	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'*'), eei_precedence_power2), eei_rule_handle_infix),
-	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'&'), eei_precedence_power2), eei_rule_handle_infix),
-	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'/'), eei_precedence_power2), eei_rule_handle_infix),
-	HANDLE(MAKE_DEFAULT_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'%'), eei_precedence_power2), eei_rule_handle_infix),
-	HANDLE(MAKE_INFIX_RULE(MAKE_TOKEN(eei_token_operator,'^'), eei_precedence_power3, eei_rule_right, 0), eei_rule_handle_infix),
+	HANDLE(INFIX(TOKEN(eei_token_operator,token_symbol_op_or), eei_precedence_logical_or), eei_rule_handle_infix),
+	HANDLE(INFIX(TOKEN(eei_token_operator,token_symbol_op_xor), eei_precedence_logical_or), eei_rule_handle_infix),
+	HANDLE(INFIX(TOKEN(eei_token_operator,token_symbol_op_and), eei_precedence_logical_and), eei_rule_handle_infix),
+	HANDLE(INFIX(TOKEN(eei_token_operator,'<'), eei_precedence_compare), eei_rule_handle_infix),
+	HANDLE(INFIX(TOKEN(eei_token_operator,'>'), eei_precedence_compare), eei_rule_handle_infix),
+	HANDLE(INFIX(TOKEN(eei_token_operator,token_symbol_op_eq), eei_precedence_compare), eei_rule_handle_infix),
+	HANDLE(INFIX(TOKEN(eei_token_operator,token_symbol_op_neq), eei_precedence_compare), eei_rule_handle_infix),
+	HANDLE(INFIX(TOKEN(eei_token_operator,token_symbol_op_gte), eei_precedence_compare), eei_rule_handle_infix),
+	HANDLE(INFIX(TOKEN(eei_token_operator,token_symbol_op_lte), eei_precedence_compare), eei_rule_handle_infix),
+	HANDLE(INFIX(TOKEN(eei_token_operator,'+'), eei_precedence_power1), eei_rule_handle_infix),
+	HANDLE(INFIX(TOKEN(eei_token_operator,'-'), eei_precedence_power1), eei_rule_handle_infix),
+	HANDLE(INFIX(TOKEN(eei_token_operator,'|'), eei_precedence_power1), eei_rule_handle_infix),
+	HANDLE(INFIX(TOKEN(eei_token_operator,'*'), eei_precedence_power2), eei_rule_handle_infix),
+	HANDLE(INFIX(TOKEN(eei_token_operator,'&'), eei_precedence_power2), eei_rule_handle_infix),
+	HANDLE(INFIX(TOKEN(eei_token_operator,'/'), eei_precedence_power2), eei_rule_handle_infix),
+	HANDLE(INFIX(TOKEN(eei_token_operator,'%'), eei_precedence_power2), eei_rule_handle_infix),
 
-	STATE(MAKE_SENTINEL_RULE())
+	//A right-binding operator
+	HANDLE(RIGHTINFIX(TOKEN(eei_token_operator,'^'), eei_precedence_power3), eei_rule_handle_infix),
+
+	SENTINEL_RULE()
 };
 
 static const eei_rule_description eei_parser_postfix_rules[] =
 {
-	HANDLE(MAKE_POSTFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_identifier), eei_precedence_postfix), eei_rule_handle_postfix),
+	HANDLE(POSTFIX(SIMPLE_TOKEN(eei_token_identifier)), eei_rule_handle_postfix),
 
-	STATE(MAKE_SENTINEL_RULE())
+	SENTINEL_RULE()
 };
 
 static const eei_look_behind_table_item eei_parser_lookbehind_rules[] =
@@ -752,36 +762,36 @@ static const eei_look_behind_table_item eei_parser_lookbehind_rules[] =
 #	if EEI_ALLOW_PREFIX_OPERATOR_FUNCTIONS
 	//Prefix-operator call
 	{
-		STATE(MAKE_LOOK_BEHIND_PREFIX_RULE(MAKE_TOKEN(eei_token_delimiter,'('))),
-		HANDLE(MAKE_DELAYED_PREFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_operator)), eei_rule_handle_prefix),
-		HANDLE(MAKE_DELIMITED_INFIX_RULE(MAKE_TOKEN(eei_token_delimiter,'('), eei_precedence_function), eei_rule_handle_function)
+		LOOKBEHIND(PREFIX(TOKEN(eei_token_delimiter,'('))),
+		HANDLE(DELAYED(PREFIX(SIMPLE_TOKEN(eei_token_operator))), eei_rule_handle_prefix),
+		HANDLE(DELIMITED(INFIX(TOKEN(eei_token_delimiter,'('), eei_precedence_function)), eei_rule_handle_function),
 	},
 #	endif
 
-	{MAKE_SENTINEL_RULE(),MAKE_SENTINEL_RULE(),STATE(MAKE_SENTINEL_RULE())}
+	{SENTINEL_RULE(),SENTINEL_RULE(),SENTINEL_RULE()}
 };
 
 static const eei_end_rules_table_item eei_parser_end_rules[] =
 {
 	//Grouping parens
 	{
-		HANDLE(MAKE_DELIMITED_PREFIX_RULE(MAKE_TOKEN(eei_token_delimiter,'(')), eei_rule_handle_group),
-		MAKE_END_RULE(MAKE_TOKEN(eei_token_delimiter,')'))
+		HANDLE(DELIMITED(PREFIX(TOKEN(eei_token_delimiter,'('))), eei_rule_handle_group),
+		END_RULE(TOKEN(eei_token_delimiter,')'))
 	},
 
 	//Function call
 	{
-		HANDLE(MAKE_DELIMITED_INFIX_RULE(MAKE_TOKEN(eei_token_delimiter,'('), eei_precedence_function), eei_rule_handle_function),
-		MAKE_END_RULE(MAKE_TOKEN(eei_token_delimiter,')'))
+		HANDLE(DELIMITED(INFIX(TOKEN(eei_token_delimiter,'('), eei_precedence_function)), eei_rule_handle_function),
+		END_RULE(TOKEN(eei_token_delimiter,')'))
 	},
 
 	//Expression end
 	{
-		MAKE_DELIMITED_PREFIX_RULE(MAKE_SIMPLE_TOKEN(eei_token_sof)),
-		MAKE_END_RULE(MAKE_SIMPLE_TOKEN(eei_token_eof))
+		SOF_RULE(),
+		END_RULE(SIMPLE_TOKEN(eei_token_eof))
 	},
 
-	{MAKE_SENTINEL_RULE(),MAKE_SENTINEL_END_RULE()}
+	{SENTINEL_RULE(),END_SENTINEL_RULE()}
 };
 
 //A group rule description for internal use
@@ -839,12 +849,12 @@ eei_rule_description eei_find_rule(eei_token token, eei_rule_type expected, eei_
 
 		case eei_rule_end:
 			//The end rules tables can not be searched using this function
-			return MAKE_SENTINEL_RULE();
+			return SENTINEL_RULE();
 	}
 
 	//Use a simple linear search since the tables are small and the
 	// overhead of a binary search is not worth it
-	for (; *table != MAKE_SENTINEL_RULE(); ++table)
+	for (; *table != SENTINEL_RULE(); ++table)
 	{
 		const eei_rule_description tested = *table;
 
@@ -867,7 +877,7 @@ eei_rule_description eei_find_rule(eei_token token, eei_rule_type expected, eei_
 
 		//Use a simple linear search since the tables are small and the
 		// overhead of a binary search is not worth it
-		while (lb_table->current != MAKE_SENTINEL_RULE())
+		while (lb_table->current != SENTINEL_RULE())
 		{
 			if (eei_compare_rules(tested, lb_table->current) && eei_compare_rules(previous, lb_table->previous))
 				//We found a match in the look-behind table - return the new rule
@@ -889,7 +899,7 @@ int eei_find_end_rule(eei_token token, eei_rule_description rule)
 
 	//Use a simple linear search since the tables are small and the
 	// overhead of a binary search is not worth it
-	while (table->rule != MAKE_SENTINEL_RULE())
+	while (table->rule != SENTINEL_RULE())
 	{
 		if ((rule == table->rule) && (token == GET_RULE_TOKEN(table->end)))
 			break;
@@ -897,7 +907,7 @@ int eei_find_end_rule(eei_token token, eei_rule_description rule)
 		table++;
 	}
 
-	return table->rule != MAKE_SENTINEL_RULE();
+	return table->rule != SENTINEL_RULE();
 }
 
 
@@ -1381,7 +1391,7 @@ static inline ee_parser_reply eei_parse_pushGroupRule(
 	//	since that must be the rule that created this group
 	parser->currentGroup = parser->stack.top - 1;
 
-	return eei_parse_push(parser, MAKE_GROUP_RULE(), eei_precedence_lowest, token);
+	return eei_parse_push(parser, GROUP_RULE(), eei_precedence_lowest, token);
 }
 
 //Parser symbol table helper functions
@@ -1562,6 +1572,7 @@ static inline ee_parser_reply eei_rule_handler_operator(
 		ee_parser_reply error
 		)
 {
+	int wrong_arity = 0;
 	const ee_function op =
 			eei_parse_symbols_get_function(
 				parser,
@@ -1570,12 +1581,17 @@ static inline ee_parser_reply eei_rule_handler_operator(
 				((GET_RULE_TOKEN_TYPE(node->rule) == eei_token_operator) ? ee_function_flag_operator : 0),
 				flag,
 				0,
-				NULL);
+				&wrong_arity);
 
 	if (!op)
 	{
 		const eei_parser_token token = {GET_RULE_TOKEN(node->rule), node->text};
-		return eei_parse_error(parser, error, &token);
+		return eei_parse_error(
+					parser,
+					wrong_arity
+					? ee_parser_function_wrong_arity
+					: error,
+					&token);
 	}
 
 	return eei_vmmake_execute_functions(&parser->vm, op, arity);
@@ -1905,7 +1921,7 @@ void eei_parse_foldEndDilimiter(
 	//Walk the stack back and find the previous group.
 	//Pre-decrementing skips the current top, that we know is not a group rule!
 	while (--group > 0)
-		if (parser->stack.stack[group].rule == MAKE_GROUP_RULE())
+		if (parser->stack.stack[group].rule == GROUP_RULE())
 			break;
 
 	//Sanity check
@@ -2000,7 +2016,7 @@ void eei_parse_init(eei_parser * parser)
 	eei_parser_token token;
 
 	parser->status = ee_parser_ok;
-	parser->error_token.token = MAKE_SIMPLE_TOKEN(eei_token_sof);
+	parser->error_token.token = SIMPLE_TOKEN(eei_token_sof);
 	parser->error_token.text.start = 0;
 	parser->error_token.text.end = parser->expression_size;
 
@@ -2011,11 +2027,11 @@ void eei_parse_init(eei_parser * parser)
 	node.stack_top = 0;
 
 	//Push a "start" rule - this will simplify things during processing
-	node.rule = eei_find_rule(MAKE_SIMPLE_TOKEN(eei_token_sof), eei_rule_prefix, MAKE_SENTINEL_RULE());
+	node.rule = eei_find_rule(SIMPLE_TOKEN(eei_token_sof), eei_rule_prefix, SENTINEL_RULE());
 	eei_stack_push(&parser->stack, &node);
 
 	//Start a group - this allows to remove many tests for an empty stack
-	token.token = MAKE_SIMPLE_TOKEN(eei_token_group);
+	token.token = SIMPLE_TOKEN(eei_token_group);
 	token.text.start = 0;
 	token.text.end = parser->expression_size;
 	eei_parse_pushGroupRule(parser, &token);
@@ -2036,6 +2052,12 @@ void eei_parse_expression(eei_parser * parser)
 		//Convert from lexer to parser representation
 		token.text.start = lexer_state.start - parser->expression;
 		token.text.end = lexer_state.head - parser->expression;
+
+		if (token.token == ERROR_TOKEN())
+		{
+			eei_parse_error(parser, ee_parser_bad_input, &token);
+			return;
+		}
 
 		eei_parse_token(parser, &token);
 	}
