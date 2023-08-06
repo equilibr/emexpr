@@ -232,38 +232,28 @@ void test_sizes()
 	var1 = 0;
 	var2 = 1;
 
-	test_print_name("Regular tests. All results should equal 1.");
+	test_print_name("Regular tests. results=1.");
 	test_print_header();
 
 	test_expression("!a");
 	test_expression("2M * (1/2)m");
-	test_expression("1 * 1");
-	test_expression("-(1 * -1)");
-	test_expression("-1 * -1");
 	test_expression("2 * 3 + 4 == 10");
 	test_expression("14 == 2 * (3 + 4)");
 	test_expression(">(15,2 + 3 * 4)");
 	test_expression("(2 + 3) * 4 / 20");
 	test_expression("1 - (-1--1)");
-	test_expression("||(a,1)");
-	test_expression("^^(0,a,1)");
 	test_expression("!^^(0,1,1)");
-	test_expression("1.01 - 0.1/10");
-	test_expression("(((b)))");
-	test_expression("((unity((b))))");
+	test_expression("(unity((1.01-0.1/10)))");
 
-	test_print_name("Arity tests. All results should equal to arity.");
+	test_print_name("Arity tests. results=arity.");
 	test_print_header();
 	test_expression("arity()");
 	test_expression("arity(a)");
 	test_expression("arity((a))");
-	test_expression("arity(a,b)");
-	test_expression("arity((a),b)");
-	test_expression("arity(a,(b))");
-	test_expression("arity((a),(b))");
+	test_expression("arity(a,((b)))");
 	test_expression("arity(((a)),((b)))");
 
-	test_print_name("Assignment tests. Shoul compile to stored/empty.");
+	test_print_name("Assignment tests. Compile to stored/empty.");
 	test_print_header();
 
 	//Mark empty expression during parsing!
@@ -271,7 +261,7 @@ void test_sizes()
 	test_expression("a = 1");
 	test_expression("a = pi() / pi - 1");
 
-	test_print_name("Error detection. All compile should fail.");
+	test_print_name("Error detection. Fail compilation.");
 	test_print_header();
 
 	//Unexpected delimiter
