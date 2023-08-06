@@ -237,7 +237,8 @@ void test_sizes()
 
 	test_expression("!a");
 	test_expression("2M * (1/2)m");
-	test_expression("2 * 3 + 4 == 10");
+	test_expression("2 + 3 * 4 == 14");
+	test_expression("(2 + 3) * 4 == 20");
 	test_expression("14 == 2 * (3 + 4)");
 	test_expression(">(15,2 + 3 * 4)");
 	test_expression("(2 + 3) * 4 / 20");

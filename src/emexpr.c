@@ -626,8 +626,14 @@ typedef enum
 
 //Rule description modifiers
 
+//Changes the precedence of the rule
+#define PRECEDENCE_RULE(rule_description, precedence) ((eei_rule_description)( (rule_description &\
+	~BITMASKS(eei_rule_bits_precedence_size, eei_rule_bits_precedence_offset)) |\
+	MAKE_PART_BITS(precedence, eei_rule_bits_precedence_offset, eei_rule_bits_precedence_size)))
+
 //Changes the next rule
-#define NEXT_RULE(rule_description, next) ((eei_rule_description)( (rule_description & ~BITMASKS(eei_rule_bits_next_size, eei_rule_bits_next_offset)) |\
+#define NEXT_RULE(rule_description, next) ((eei_rule_description)( (rule_description &\
+	~BITMASKS(eei_rule_bits_next_size, eei_rule_bits_next_offset)) |\
 	MAKE_PART_BITS(next, eei_rule_bits_next_offset, eei_rule_bits_next_size)))
 
 //A rule that starts a group with (end) delimiters, with it own precedence stack
@@ -1334,9 +1340,6 @@ typedef struct
 
 	//Count of elements inside this group (0 otherwise)
 	ee_element_count elements;
-
-	//The precedence of the current node
-	eei_precedence precedence;
 } eei_parser_node;
 
 //Holds management data for the parser stack that is used instead
@@ -1369,7 +1372,6 @@ ee_parser_reply eei_stack_copynode(eei_parser_node * dst, const eei_parser_node 
 	dst->text.start = src->text.start;
 	dst->text.end = src->text.end;
 	dst->elements = src->elements;
-	dst->precedence = src->precedence;
 
 	return ee_parser_ok;
 }
@@ -1484,9 +1486,8 @@ static inline ee_parser_reply eei_parse_push(
 
 	node.text.start = token->text.start;
 	node.text.end = token->text.end;
-	node.rule = rule;
+	node.rule = PRECEDENCE_RULE(rule, precedence);
 	node.elements = 0;
-	node.precedence = precedence;
 
 	//Update the next expected rule type
 	parser->next = GET_RULE_NEXT(rule);
@@ -2020,7 +2021,7 @@ static inline void eei_parse_foldPrecedence(eei_parser * parser, const eei_rule_
 	//	it with a lower one, than us.
 	while (
 		   (parser->stack.top > 1)
-		   && (eei_stack_top(&parser->stack, 0)->precedence >= precedence))
+		   && (GET_RULE_PRECEDENCE(eei_stack_top(&parser->stack, 0)->rule) >= precedence))
 		eei_parse_done(parser);
 }
 
@@ -2058,7 +2059,6 @@ void eei_parse_foldEndDilimiter(
 	node.text.end = token->text.end;
 	node.rule = rule;
 	node.elements = 0;
-	node.precedence = 0;//Does not matter since it will be immediately popped
 
 	++group;
 	eei_stack_copynode(&parser->stack.stack[group], &node);
