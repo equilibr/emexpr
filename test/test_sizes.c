@@ -281,6 +281,7 @@ void test_sizes()
 	test_expression("&2");
 	test_expression("&(2)");
 	test_expression("2&3");
+	test_expression("+M");
 
 	//Refuse incorrect grammar
 	test_expression("a =");
