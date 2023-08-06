@@ -133,16 +133,10 @@ int eei_constant_parser(const ee_char_type * start, const ee_char_type * end, ee
 
 typedef enum
 {
-	eei_token_error,
-	eei_token_eof,
+	//Internally used tokens
+	eei_token_internal,
 
-	eei_token_sof,
-	eei_token_group,
-
-	//Marker for the END of internal tokens
-	eei_token_internals,
-
-	eei_token_identifier = eei_token_internals,
+	eei_token_identifier,
 	eei_token_constant,
 	eei_token_delimiter,
 	eei_token_operator,
@@ -152,6 +146,13 @@ typedef enum
 	//DO NOT use it in the actual tokens since it may not fit in the allocated bits!
 	eei_token_sentinel
 } eei_token_type;
+
+typedef enum
+{
+	eei_token_internal_error,
+	eei_token_internal_eof,
+	eei_token_internal_parser
+} eei_token_internals;
 
 //Holds the token type and the symbol
 //A token has two parts:
@@ -212,8 +213,9 @@ enum
 //Create a simple token that does not use the symbol
 #define SIMPLE_TOKEN(token_type) TOKEN(token_type, token_symbol_any)
 
-//An error token
-#define ERROR_TOKEN() SIMPLE_TOKEN(eei_token_error)
+//Special tokens
+#define ERROR_TOKEN() TOKEN(eei_token_internal,eei_token_internal_error)
+#define EOF_TOKEN() TOKEN(eei_token_internal,eei_token_internal_eof)
 
 //Extract token data from a token
 #define GET_TOKEN_TYPE(token) (eei_token_type)GET_PART_BITS(token, eei_token_bits_type_offset, eei_token_bits_type_size)
@@ -338,7 +340,7 @@ eei_token eei_lexer_next_token(eei_lexer_state * state)
 	state->start = state->head;
 
 	if (eei_lexer_is_eof(*state->head))
-		return SIMPLE_TOKEN(eei_token_eof);
+		return EOF_TOKEN();
 
 	//The first character determines the token class
 
@@ -391,6 +393,15 @@ eei_token eei_lexer_next_token(eei_lexer_state * state)
 
 typedef enum
 {
+	eei_token_internal_praser_sof = eei_token_internal_parser,
+	eei_token_internal_praser_group,
+	eei_token_internal_praser_end,
+	eei_token_internal_praser_delimit,
+	eei_token_internal_praser_copy
+} eei_token_internals_parser;
+
+typedef enum
+{
 	eei_rule_prefix,
 	eei_rule_infix,
 	eei_rule_postfix,
@@ -416,6 +427,7 @@ typedef enum
 	eei_rule_handle_none,
 	eei_rule_handle_constant,
 	eei_rule_handle_variable,
+	eei_rule_handle_delimiter,
 	eei_rule_handle_group,
 	eei_rule_handle_prefix,
 	eei_rule_handle_infix,
@@ -450,12 +462,12 @@ typedef struct
 	//The currently parsed rule
 	eei_rule_description current;
 
-	//The previous rule
-	eei_rule_description previous;
+	//The condition for matching the current rule
+	eei_rule_description condition;
 
 	//The rule the current one is morphed-to in case of a match
 	eei_rule_description morphed;
-} eei_look_behind_table_item;
+} eei_conditional_table_item;
 
 typedef struct
 {
@@ -567,6 +579,16 @@ typedef enum
 } eei_rule_offsets;
 
 
+//Special tokens used only by the parser
+//--------------------------------------
+
+#define SOF_TOKEN() TOKEN(eei_token_internal,eei_token_internal_praser_sof)
+#define GROUP_TOKEN() TOKEN(eei_token_internal,eei_token_internal_praser_group)
+#define END_TOKEN() TOKEN(eei_token_internal,eei_token_internal_praser_end)
+#define DELIMIT_TOKEN() TOKEN(eei_token_internal,eei_token_internal_praser_delimit)
+#define COPY_TOKEN() TOKEN(eei_token_internal,eei_token_internal_praser_copy)
+
+
 //Create a rule from its parts
 #define MAKE_RULE(token, type) \
 	(eei_rule)(\
@@ -604,6 +626,10 @@ typedef enum
 
 //Rule description modifiers
 
+//Changes the next rule
+#define NEXT_RULE(rule_description, next) ((eei_rule_description)( (rule_description & ~BITMASKS(eei_rule_bits_next_size, eei_rule_bits_next_offset)) |\
+	MAKE_PART_BITS(next, eei_rule_bits_next_offset, eei_rule_bits_next_size)))
+
 //A rule that starts a group with (end) delimiters, with it own precedence stack
 #define DELIMITED(rule_description) ((eei_rule_description)( (rule_description) |\
 	MAKE_PART_BITS(1, eei_rule_bits_end_delimiter_offset, eei_rule_bits_end_delimiter_size)))
@@ -631,21 +657,35 @@ typedef enum
 	MAKE_PART_BITS(handler, eei_rule_bits_handler_offset, eei_rule_bits_handler_size)))
 
 
+//Conditional table rules
+
+//A generic prefix rule for using in the conditiona lables
+#define PREFIX_RULE(token) MAKE_RULE(token, eei_rule_prefix)
+
+//A generic infix rule for using in the conditiona lables
+#define INFIX_RULE(token) MAKE_RULE(token, eei_rule_infix)
+
+//A rule for the conditional table that uses the original and ends a group
+#define END_RULE(handler) HANDLE(END_TOKEN(),handler)
+
+//A rule for the conditional table that uses the original with a handle added
+#define DELIMIT_RULE(handler) HANDLE(DELIMIT_TOKEN(),handler)
+
+//A rule for the conditional table that uses the original as-is
+#define COPY_RULE() COPY_TOKEN()
+
+
 //Special rules
-
-//A rule for the END table
-#define END_RULE(token) MAKE_RULE_DESCRIPTION(MAKE_RULE((token), eei_rule_end), 0, eei_rule_prefix, eei_rule_left)
-
-#define END_SENTINEL_RULE() MAKE_RULE_DESCRIPTION(MAKE_RULE(ERROR_TOKEN(), eei_rule_end), 0, eei_rule_prefix, eei_rule_left)
 
 //A sentinel invalid rule to mark the end of a rules table
 #define SENTINEL_RULE() PREFIX(ERROR_TOKEN())
 
 //A special rule to mark the start of the expression
-#define SOF_RULE() DELIMITED(PREFIX(SIMPLE_TOKEN(eei_token_sof)))
+#define SOF_RULE() DELIMITED(PREFIX(SOF_TOKEN()))
 
 //A special rule that marks parsing groups
-#define GROUP_RULE() INFIX(SIMPLE_TOKEN(eei_token_group),eei_precedence_lowest)
+//Also used in conditional tables to request the use of the original rule with a handle added
+#define GROUP_RULE() INFIX(GROUP_TOKEN(),eei_precedence_lowest)
 
 
 //Macros to simplify working with a ruleset
@@ -707,24 +747,33 @@ static const eei_rule_description eei_parser_prefix_rules[] =
 #	endif
 
 	//Grouping parens
-	HANDLE(DELIMITED(PREFIX(TOKEN(eei_token_delimiter,'('))), eei_rule_handle_group),
+	DELIMITED(PREFIX(TOKEN(eei_token_delimiter,'('))),
 
-	SOF_RULE(),
+	//Closing parens. Will produce different rules depending on the current group
+	GROUPED(TERMINAL(TOKEN(eei_token_delimiter,')'))),
+
+	//Expression end for an empty expression. Only allowed inside the SOF group
+	GROUPED(PREFIX(EOF_TOKEN())),
+
 	SENTINEL_RULE()
 };
 
 static const eei_rule_description eei_parser_infix_rules[] =
 {
 #	if EEI_ALLOW_ASSIGN
-	//Variable assignment
-	HANDLE(NOFOLD(INFIX(TOKEN(eei_token_operator,'='), eei_precedence_assign)), eei_rule_handle_assign),
+	//Variable assignment, only allowed in the SOF group
+	HANDLE(GROUPED(NOFOLD(INFIX(TOKEN(eei_token_operator,'='), eei_precedence_assign))),eei_rule_handle_assign),
 #	endif
 
 	//Sequence delimiter
-	INFIX(TOKEN(eei_token_delimiter,','), eei_precedence_comma),
+	HANDLE(GROUPED(INFIX(TOKEN(eei_token_delimiter,','), eei_precedence_comma)),eei_rule_handle_delimiter),
 
 	//Function call
-	HANDLE(DELIMITED(INFIX(TOKEN(eei_token_delimiter,'('), eei_precedence_function)), eei_rule_handle_function),
+	DELIMITED(INFIX(TOKEN(eei_token_delimiter,'('), eei_precedence_function)),
+
+	//Closing parens for groups and functions calls. Will produce different rules depending on the current group.
+	//The group folded by this rule could be considered as a post-fix, thus an infix must follow.
+	GROUPED(INFIX(TOKEN(eei_token_delimiter,')'), eei_precedence_lowest)),
 
 	//Normal operators
 	HANDLE(INFIX(TOKEN(eei_token_operator,token_symbol_op_or), eei_precedence_logical_or), eei_rule_handle_infix),
@@ -747,6 +796,9 @@ static const eei_rule_description eei_parser_infix_rules[] =
 	//A right-binding operator
 	HANDLE(RIGHTINFIX(TOKEN(eei_token_operator,'^'), eei_precedence_power3), eei_rule_handle_infix),
 
+	//Expression end for an normal expression. Will fold everything before closing the group.
+	GROUPED(INFIX(EOF_TOKEN(), eei_precedence_lowest)),
+
 	SENTINEL_RULE()
 };
 
@@ -757,48 +809,82 @@ static const eei_rule_description eei_parser_postfix_rules[] =
 	SENTINEL_RULE()
 };
 
-static const eei_look_behind_table_item eei_parser_lookbehind_rules[] =
+static const eei_conditional_table_item eei_parser_lookbehind_rules[] =
 {
 #	if EEI_ALLOW_PREFIX_OPERATOR_FUNCTIONS
 	//Prefix-operator call
 	{
-		LOOKBEHIND(PREFIX(TOKEN(eei_token_delimiter,'('))),
-		HANDLE(DELAYED(PREFIX(SIMPLE_TOKEN(eei_token_operator))), eei_rule_handle_prefix),
-		HANDLE(DELIMITED(INFIX(TOKEN(eei_token_delimiter,'('), eei_precedence_function)), eei_rule_handle_function),
+		PREFIX_RULE(TOKEN(eei_token_delimiter,'(')),
+		PREFIX_RULE(SIMPLE_TOKEN(eei_token_operator)),
+		DELIMITED(INFIX(TOKEN(eei_token_delimiter,'('), eei_precedence_function)),
 	},
 #	endif
 
 	{SENTINEL_RULE(),SENTINEL_RULE(),SENTINEL_RULE()}
 };
 
-static const eei_end_rules_table_item eei_parser_end_rules[] =
+static const eei_conditional_table_item eei_parser_group_rules[] =
 {
-	//Grouping parens
+	//Prefix closing parens of grouping parens, group of group or error
 	{
-		HANDLE(DELIMITED(PREFIX(TOKEN(eei_token_delimiter,'('))), eei_rule_handle_group),
-		END_RULE(TOKEN(eei_token_delimiter,')'))
+		PREFIX_RULE(TOKEN(eei_token_delimiter,')')),
+		PREFIX_RULE(TOKEN(eei_token_delimiter,'(')),
+		END_RULE(eei_rule_handle_group)
 	},
 
-	//Function call
+	//Infix closing parens of grouping parens
 	{
-		HANDLE(DELIMITED(INFIX(TOKEN(eei_token_delimiter,'('), eei_precedence_function)), eei_rule_handle_function),
-		END_RULE(TOKEN(eei_token_delimiter,')'))
+		INFIX_RULE(TOKEN(eei_token_delimiter,')')),
+		PREFIX_RULE(TOKEN(eei_token_delimiter,'(')),
+		END_RULE(eei_rule_handle_group)
 	},
 
-	//Expression end
+	//Prefix closing parents of a function call, 0-arity or error
 	{
-		SOF_RULE(),
-		END_RULE(SIMPLE_TOKEN(eei_token_eof))
+		PREFIX_RULE(TOKEN(eei_token_delimiter,')')),
+		INFIX_RULE(TOKEN(eei_token_delimiter,'(')),
+		END_RULE(eei_rule_handle_function)
 	},
 
-	{SENTINEL_RULE(),END_SENTINEL_RULE()}
+	//Infix closing parents of a function call
+	{
+		INFIX_RULE(TOKEN(eei_token_delimiter,')')),
+		INFIX_RULE(TOKEN(eei_token_delimiter,'(')),
+		END_RULE(eei_rule_handle_function)
+	},
+
+	//Sequence delimiter of a function call
+	{
+		INFIX_RULE(TOKEN(eei_token_delimiter,',')),
+		INFIX_RULE(TOKEN(eei_token_delimiter,'(')),
+		COPY_RULE()
+	},
+
+#	if EEI_ALLOW_ASSIGN
+	//Variable assignment, only allowed in the SOF group
+	{
+		INFIX_RULE(TOKEN(eei_token_operator,'=')),
+		PREFIX_RULE(SOF_TOKEN()),
+		COPY_RULE()
+	},
+#	endif
+
+	//Normal expression end
+	{
+		INFIX_RULE(EOF_TOKEN()),
+		PREFIX_RULE(SOF_TOKEN()),
+		END_RULE(eei_rule_handle_none)
+	},
+
+	//Empty expression or unexpected end
+	{
+		PREFIX_RULE(EOF_TOKEN()),
+		PREFIX_RULE(SOF_TOKEN()),
+		END_RULE(eei_rule_handle_none)
+	},
+
+	{SENTINEL_RULE(),SENTINEL_RULE(),SENTINEL_RULE()}
 };
-
-//A group rule description for internal use
-//static const eei_rule_description eei_parser_group_rule = STATE(MAKE_GROUP_RULE());
-
-//A sentinel rule description to use as a return value when needed
-//static const eei_rule_description eei_parser_sentinel_rule = STATE(MAKE_SENTINEL_RULE());
 
 //Compare two tokens
 static inline int eei_compare_tokens(eei_token a, eei_token b)
@@ -821,12 +907,68 @@ static inline int eei_compare_tokens(eei_token a, eei_token b)
 //Compare two rules
 static inline int eei_compare_rules(eei_rule_description a, eei_rule_description b)
 {
-	return
-			(CLEAR_RULE_TOKEN(a) == CLEAR_RULE_TOKEN(b))
-			&& eei_compare_tokens(GET_RULE_TOKEN(a), GET_RULE_TOKEN(b));
+	return (GET_RULE_TYPE(a) == GET_RULE_TYPE(b)) && eei_compare_tokens(a, b);
 }
 
-eei_rule_description eei_find_rule(eei_token token, eei_rule_type expected, eei_rule_description previous)
+//Return a morphed rule descption given the original
+static inline eei_rule_description eei_conditional_morph(eei_rule_description rule, eei_rule_description morphed)
+{
+	if (morphed == SENTINEL_RULE())
+		return SENTINEL_RULE();
+
+	if (GET_RULE_TOKEN(morphed) == COPY_TOKEN())
+		//A copy rule - used only for group filtering of regular rules
+		return rule;
+
+	if ((GET_RULE_TOKEN(morphed) != END_TOKEN()) && (GET_RULE_TOKEN(morphed) != DELIMIT_TOKEN()))
+		//A regular morphed rule description - use as-is
+		return morphed;
+
+	//Create a franken-rule
+	eei_rule_description result = rule;
+
+	//The token is always from the original rule
+	result &= ~BITMASKS(eei_rule_bits_token_size,eei_rule_bits_token_offset);
+	result |= MAKE_PART_BITS(GET_RULE_TOKEN(rule), eei_rule_bits_token_offset, eei_rule_bits_token_size);
+
+	//The handler is always from the morphed rule
+	result &= ~BITMASKS(eei_rule_bits_handler_size,eei_rule_bits_handler_offset);
+	result |= MAKE_PART_BITS(GET_RULE_HANDLER(morphed), eei_rule_bits_handler_offset, eei_rule_bits_handler_size);
+
+	if (GET_RULE_TOKEN(morphed) == END_TOKEN())
+	{
+		//The end rule overrides the rule type
+		result &= ~BITMASKS(eei_rule_bits_type_size,eei_rule_bits_type_offset);
+		result |= MAKE_PART_BITS(eei_rule_end, eei_rule_bits_type_offset, eei_rule_bits_type_size);
+	}
+
+	return result;
+}
+
+static inline eei_rule_description eei_conditional_find(
+		const eei_conditional_table_item * cond_table,
+		eei_rule_description rule,
+		eei_rule_description condition)
+{
+	//We need to compare the look-behind table with the previous token
+	const eei_conditional_table_item * table = cond_table;
+
+	//Use a simple linear search since the tables are small and the
+	// overhead of a binary search is not worth it
+	while (table->current != SENTINEL_RULE())
+	{
+		if (eei_compare_rules(rule, table->current) && eei_compare_rules(condition, table->condition))
+			//We found a match in the look-behind table - return the new rule
+			return eei_conditional_morph(rule,table->morphed);
+
+		table++;
+	}
+
+	//The look-behind did not match anything - keep searching
+	return SENTINEL_RULE();
+}
+
+eei_rule_description eei_find_rule(eei_token token, eei_rule_type expected, eei_rule_description previous, eei_rule_description group)
 {
 	//Find the rule of the expected type matching the given token
 	//Will return the sentinel rule on failure
@@ -856,58 +998,42 @@ eei_rule_description eei_find_rule(eei_token token, eei_rule_type expected, eei_
 	// overhead of a binary search is not worth it
 	for (; *table != SENTINEL_RULE(); ++table)
 	{
-		const eei_rule_description tested = *table;
+		eei_rule_description tested = *table;
 
 		if (!eei_compare_tokens(GET_RULE_TOKEN(tested), token))
 			//The tokens don't match, no more tests needed
 			continue;
 
-		//Test if this rule has a look-behind condition.
-		//It is possible to make use without this flag and always search
-		//	the look-begind table, but it costs us no additional memory and avoids
-		//	redundant searches for most rules.
-		//The only caveat is that when identical rules are present, with and without a look-begind flag,
-		//	the one with the flag MUST appear BEFORE the other one in the table.
-		if (!GET_RULE_LOOK_BEHIND(tested))
-			//This rule has no additional constraints - we found what we're looking for!
-			break;
+		//Test for conditions, if exist.
+		//For this to work properly, for a rule that has both conditional and unconditional forms,
+		// the unconditional one must appear AFTER the conditional ones.
 
-		//We need to compare the look-behind table with the previous token
-		const eei_look_behind_table_item * lb_table = eei_parser_lookbehind_rules;
-
-		//Use a simple linear search since the tables are small and the
-		// overhead of a binary search is not worth it
-		while (lb_table->current != SENTINEL_RULE())
+		if (GET_RULE_LOOK_BEHIND(tested))
 		{
-			if (eei_compare_rules(tested, lb_table->current) && eei_compare_rules(previous, lb_table->previous))
-				//We found a match in the look-behind table - return the new rule
-				return lb_table->morphed;
+			//Compare the look-behind table with the previous token
+			//Use the returned rule as the new rule for further tests
+			tested = eei_conditional_find(eei_parser_lookbehind_rules, tested, previous);
 
-			lb_table++;
+			if (tested == SENTINEL_RULE())
+				//The look-behind did not match anything - keep searching
+				continue;
 		}
+
+		if (GET_RULE_GROUPED(tested))
+		{
+			//We need to compare the group table with the current group
+			tested = eei_conditional_find(eei_parser_group_rules, tested, group);
+
+			if (tested == SENTINEL_RULE())
+				//The group did not match anything - keep searching
+				continue;
+		}
+
+		//This rule has no additional constraints - we found what we're looking for!
+		return tested;
 	}
 
-	return *table;
-}
-
-int eei_find_end_rule(eei_token token, eei_rule_description rule)
-{
-	//Find the end rule with the given token for the requested rule
-	//Will return the sentinel end rule on failure
-
-	const eei_end_rules_table_item * table = eei_parser_end_rules;
-
-	//Use a simple linear search since the tables are small and the
-	// overhead of a binary search is not worth it
-	while (table->rule != SENTINEL_RULE())
-	{
-		if ((rule == table->rule) && (token == GET_RULE_TOKEN(table->end)))
-			break;
-
-		table++;
-	}
-
-	return table->rule != SENTINEL_RULE();
+	return SENTINEL_RULE();
 }
 
 
@@ -1206,15 +1332,11 @@ typedef struct
 	//The source token for the rule being processed
 	eei_text_location text;
 
-	//The token type expected next
-	unsigned char next;
+	//Count of elements inside this group (0 otherwise)
+	ee_element_count elements;
 
 	//The precedence of the current node
 	eei_precedence precedence;
-
-	//_Execution_ stack index when this node was pushed.
-	//Used to calculate arity of functions and validate groups are correct.
-	ee_element_count stack_top;
 } eei_parser_node;
 
 //Holds management data for the parser stack that is used instead
@@ -1246,9 +1368,8 @@ ee_parser_reply eei_stack_copynode(eei_parser_node * dst, const eei_parser_node 
 	dst->rule = src->rule;
 	dst->text.start = src->text.start;
 	dst->text.end = src->text.end;
-	dst->next = src->next;
+	dst->elements = src->elements;
 	dst->precedence = src->precedence;
-	dst->stack_top = src->stack_top;
 
 	return ee_parser_ok;
 }
@@ -1317,6 +1438,9 @@ typedef struct
 	//Stack index of the current group
 	//This points to the actual rule and not the synthetic group rule
 	int currentGroup;
+
+	//The token type expected next
+	eei_rule_type next;
 } eei_parser;
 
 
@@ -1361,21 +1485,16 @@ static inline ee_parser_reply eei_parse_push(
 	node.text.start = token->text.start;
 	node.text.end = token->text.end;
 	node.rule = rule;
-	node.next = GET_RULE_NEXT(rule);
+	node.elements = 0;
 	node.precedence = precedence;
-	node.stack_top = parser->vm.current.stack;
+
+	//Update the next expected rule type
+	parser->next = GET_RULE_NEXT(rule);
 
 	return eei_parse_error(parser, eei_stack_push(&parser->stack, &node), token);
 }
 
 static inline ee_parser_reply eei_parse_pop(
-		eei_parser * parser,
-		eei_parser_node * node)
-{
-	return eei_parse_error(parser, eei_stack_pop(&parser->stack, node), NULL);
-}
-
-static inline ee_parser_reply eei_parse_popT(
 		eei_parser * parser,
 		eei_parser_node * node,
 		const eei_parser_token * token)
@@ -1550,18 +1669,45 @@ ee_parser_reply eei_rule_handler_variable(eei_parser * parser, const eei_parser_
 		return eei_vmmake_execute_functions(&parser->vm, op, 0);
 }
 
+ee_parser_reply eei_rule_handler_delimiter(eei_parser * parser, const eei_parser_node * node)
+{
+	(void)node;
+
+	//Add another element to the group count
+	parser->stack.stack[parser->currentGroup].elements++;
+	return ee_parser_ok;
+}
+
 ee_parser_reply eei_rule_handler_group(eei_parser * parser, const eei_parser_node * node)
 {
-	//A group must end with exactly ONE new value on the runtime stack
-	const int items = parser->vm.current.stack - node->stack_top;
+	//When a group is folded the group start rule is at the top of the stack.
+	//That rule holds information about the number of elements in the group.
 
-	if (items == 1)
+	//Set the error token to the folded node, since we don't have the correct identifier yet
+	eei_parser_token error = {GET_RULE_TOKEN(node->rule), node->text};
+
+	//An group head must be on the stack at this point
+	eei_parser_node head;
+
+	//Pop it since we're going to use it as the function name
+	ee_parser_reply reply = eei_parse_pop(parser, &head, &error);
+
+	if (reply != ee_parser_ok)
+		return reply;
+
+	//Now that the identifier is available change the possible error to that
+	error.token = GET_RULE_TOKEN(head.rule);
+	error.text.start = head.text.start;
+
+	//A group must have exactly one element
+
+	if (head.elements == 1)
 		return ee_parser_ok;
 
-	if (items == 0)
-		return ee_parser_expression_empty_group;
-
-	return ee_parser_expression_overfull_group;
+	if (head.elements > 1)
+		return eei_parse_error(parser, ee_parser_expression_overfull_group, &error);
+	else
+		return eei_parse_error(parser, ee_parser_expression_empty_group, &error);
 }
 
 static inline ee_parser_reply eei_rule_handler_operator(
@@ -1614,14 +1760,31 @@ ee_parser_reply eei_rule_handler_postfix(eei_parser * parser, const eei_parser_n
 
 ee_parser_reply eei_rule_handler_function(eei_parser * parser, const eei_parser_node * node)
 {
+	//When a function is folded the parameter group start rule is at the top of the stack.
+	//That rule holds information about the number of elements in the group.
+	//Below that is the function identifier.
+
 	//Set the error token to the folded node, since we don't have the correct identifier yet
 	eei_parser_token error = {GET_RULE_TOKEN(node->rule), node->text};
+
+	//An group head must be on the stack at this point
+	eei_parser_node head;
+
+	//Pop it since we're going to use it as the function name
+	ee_parser_reply reply = eei_parse_pop(parser, &head, &error);
+
+	if (reply != ee_parser_ok)
+		return reply;
+
+	//Now that the head is available change the possible error to that
+	error.token = GET_RULE_TOKEN(head.rule);
+	error.text = head.text;
 
 	//An identifier must be on the stack at this point
 	eei_parser_node identifier;
 
 	//Pop it since we're going to use it as the function name
-	ee_parser_reply reply = eei_parse_popT(parser, &identifier, &error);
+	reply = eei_parse_pop(parser, &identifier, &error);
 
 	if (reply != ee_parser_ok)
 		return reply;
@@ -1642,8 +1805,8 @@ ee_parser_reply eei_rule_handler_function(eei_parser * parser, const eei_parser_
 					ee_parser_expression_identifier_expected,
 					&error);
 
-	//The arity is just the amount of items on the run-time stack added since the identifier itself was parsed
-	const ee_arity arity = (ee_arity)(parser->vm.current.stack - identifier.stack_top);
+	//The arity is the amount of elements in the parameter group of the function
+	const ee_arity arity = (ee_arity)(head.elements);
 
 	int wrong_arity = 0;
 	ee_function op =
@@ -1677,14 +1840,14 @@ ee_parser_reply eei_rule_handler_assign(eei_parser * parser, const eei_parser_no
 	eei_parser_node identifier;
 
 	//Pop it since we're going to use it as the LHS identifier
-	ee_parser_reply reply = eei_parse_popT(parser, &identifier, &error);
+	ee_parser_reply reply = eei_parse_pop(parser, &identifier, &error);
 
 	if (reply != ee_parser_ok)
 		return reply;
 
-	//Now that the identifier is available change the possible error to that
-	error.token = GET_RULE_TOKEN(identifier.rule);
-	error.text = identifier.text;
+	//Use all the content of the current group before the assign operator as the error
+	error.text.start = parser->stack.stack[parser->currentGroup].text.start;
+	error.text.end = node->text.start;
 
 	//Make sure this is acutally an indentifier as this is the only thing curently supported
 	if (GET_RULE_TOKEN_TYPE(identifier.rule) != eei_token_identifier)
@@ -1698,10 +1861,16 @@ ee_parser_reply eei_rule_handler_assign(eei_parser * parser, const eei_parser_no
 
 	//In case of an error make sure we report what happened
 	if (!var)
+	{
+		//Now that the identifier is available change the possible error to that
+		error.token = GET_RULE_TOKEN(identifier.rule);
+		error.text = identifier.text;
+
 		return eei_parse_error(
 					parser,
 					ee_parser_unknown_variable,
 					&error);
+	}
 
 	return eei_vmmake_store_variable(&parser->vm, var);
 }
@@ -1717,6 +1886,7 @@ static inline ee_parser_reply eei_parse_done_node(eei_parser * parser, const eei
 		NULL,
 		eei_rule_handler_constant,
 		eei_rule_handler_variable,
+		eei_rule_handler_delimiter,
 		eei_rule_handler_group,
 		eei_rule_handler_prefix,
 		eei_rule_handler_infix,
@@ -1746,7 +1916,7 @@ ee_parser_reply eei_parse_done(eei_parser * parser)
 	//Process the top node
 
 	eei_parser_node node;
-	const ee_parser_reply reply = eei_parse_pop(parser, &node);
+	const ee_parser_reply reply = eei_parse_pop(parser, &node, NULL);
 
 	if (reply != ee_parser_ok)
 		return reply;
@@ -1818,7 +1988,7 @@ static inline void eei_parse_foldPrefix(eei_parser * parser, int delay)
 		const eei_rule_description rule =
 				parser->stack.stack[parser->stack.top - 1].rule;
 
-		if (GET_RULE_TOKEN_TYPE(rule) < eei_token_internals)
+		if (GET_RULE_TOKEN_TYPE(rule) == eei_token_internal)
 			break;
 
 		if (GET_RULE_ENDDELIMITER(rule))
@@ -1856,6 +2026,7 @@ static inline void eei_parse_foldPrecedence(eei_parser * parser, const eei_rule_
 
 void eei_parse_foldEndDilimiter(
 		eei_parser * parser,
+		const eei_rule_description rule,
 		const eei_parser_token * token)
 {
 	//Sanity check
@@ -1872,26 +2043,42 @@ void eei_parse_foldEndDilimiter(
 		return;
 	}
 
-	//Test the end-delimited rule that created this group
-	const int matched = eei_find_end_rule(
-							token->token,
-							parser->stack.stack[parser->currentGroup].rule);
+	//This rule closes the current group.
+	//Replace the synthetic group rule with it, so it will be folded correctly.
+	const int currentGroup = parser->currentGroup;
+	int group = currentGroup;
 
-	if (!matched)
-	{
-		//The tested node is an end delimited rule but
-		//	the current token is not that delimiter!
-		//Use the END token as the error position.
-		eei_parse_error(parser, ee_parser_expression_unmatched_end, token);
-		return;
-	}
+	//If the current group is at the top of the stack then there are no elements inside the group.
+	//If there is something else on the stack then we need to add an element, since all others were
+	// already acounted by the native delimiters.
+	parser->stack.stack[group].elements += ((group+2) != parser->stack.top) ? 1 : 0;
 
-	//We are now sure we have a correctly delimited group
+	eei_parser_node node;
+	node.text.start = token->text.start;
+	node.text.end = token->text.end;
+	node.rule = rule;
+	node.elements = 0;
+	node.precedence = 0;//Does not matter since it will be immediately popped
 
-	int group = parser->currentGroup;
+	++group;
+	eei_stack_copynode(&parser->stack.stack[group], &node);
 
-	//Fold up to, but not including, this rule
-	//This will fold the synthetic group rule as well
+	//Re-fill the node with information to represent the whole group.
+	//This node will be left behind after the group is folded to mark something was here.
+	//This is mostly needed so the empty group detection code above would correctly work for groups
+	// that only directly contain another group, as in "((0))".
+
+	//Cover the whole group
+	node.text.start = parser->stack.stack[currentGroup].text.start;
+	node.text.end = token->text.end;
+
+	//Use the original rule
+	node.rule = parser->stack.stack[currentGroup].rule;
+
+	//Make sure no fold handler will be executed
+	node.rule &= ~BITMASKS(eei_rule_bits_handler_size,eei_rule_bits_handler_offset);
+
+	//Fold up to, but not including, the just replaced rule (former synthetic group)
 	++group;
 	while (parser->stack.top > group)
 	{
@@ -1904,19 +2091,20 @@ void eei_parse_foldEndDilimiter(
 	//	to the previous one, since the rule that created the current group is,
 	//	in itself, an element of the previous one, and must be folded as part of that.
 
-	//Account for the stack top pointing one element ABOVE the actual top.
-	group = parser->stack.top - 1;
-
 	//Special handling for the SOF token to avoid many check in the following code.
-	if (!group)
+	if (parser->stack.top == 2)
 	{
 		//This code is reached when a EOF token was encountered that correctly matched the
 		// SOF delimited rule that exists at the very bottom of the stack.
 		//The current group is now a lie but we can stil fold this rule, thus completely clearing the stack.
 		parser->currentGroup = 0;
 		eei_parse_done(parser);
+		eei_parse_done(parser);
 		return;
 	}
+
+	//Account for the stack top pointing one element ABOVE the actual top.
+	group = parser->stack.top - 1;
 
 	//Walk the stack back and find the previous group.
 	//Pre-decrementing skips the current top, that we know is not a group rule!
@@ -1936,9 +2124,15 @@ void eei_parse_foldEndDilimiter(
 
 	//At this point the current group is the one the top rule was created in so we can
 	//	fold the rule that created the just-folded group.
-	eei_parse_done(parser);
-	if (parser->status != ee_parser_ok)
-		return;
+	//Since the behaviour of the processed nodes is unknown the below loop makes sure
+	// the stack is left in the expected state.
+	group = currentGroup;
+	while (parser->stack.top > group)
+	{
+		eei_parse_done(parser);
+		if (parser->status != ee_parser_ok)
+			return;
+	}
 
 	//Sanity check
 	if (!parser->stack.top)
@@ -1947,94 +2141,96 @@ void eei_parse_foldEndDilimiter(
 		return;
 	}
 
+	//Push a node represending the group just folded
+	eei_stack_push(&parser->stack, &node);
+
 	//The token is an end delimiter - that was just completely processed.
 	//This means the folded node can be treated as a postfix -
 	//	so an infix must follow
-	eei_stack_top(&parser->stack,0)->next = eei_rule_infix;
+	parser->next = eei_rule_infix;
+}
+
+void eei_parse_rule_error(eei_parser * parser, eei_parser_token * token)
+{
+	eei_parser_token error;
+
+	if (token->token == EOF_TOKEN())
+	{
+		error.token = GET_RULE_TOKEN(parser->stack.stack[parser->currentGroup].rule);
+		error.text.start = parser->stack.stack[parser->currentGroup].text.start;
+		error.text.end = parser->expression_size;
+		eei_parse_error(parser, ee_parser_expression_unmatched_end, &error);
+		return;
+	}
+
+	eei_parse_error(parser, ee_parser_expression_unexpected, token);
 }
 
 
 static inline void eei_parse_token(eei_parser * parser, eei_parser_token * token)
 {
 	const eei_parser_node * top = eei_stack_top(&parser->stack, 0);
-	eei_rule_type expected = top->next;
 	const eei_rule_description previous = top->rule;
+	eei_rule_type expected =  parser->next;
 
-	eei_rule_description rule = eei_find_rule(token->token, expected, previous);
+	eei_rule_description rule = eei_find_rule(token->token, expected, previous, parser->stack.stack[parser->currentGroup].rule);
 	int found = IS_RULE_VALID(rule);
 
 	if (!found && (expected == eei_rule_infix))
 	{
 		//A postfix can appear when an infix is expected - so look for it
-		rule = eei_find_rule(token->token, eei_rule_postfix, previous);
+		rule = eei_find_rule(token->token, eei_rule_postfix, previous, parser->stack.stack[parser->currentGroup].rule);
 		found = IS_RULE_VALID(rule);
 	}
 
-	if (found)
+	if (!found)
 	{
-		//Use the actual found rule, since it might be not the one expected
-		switch (GET_RULE_TYPE(rule))
-		{
-			case eei_rule_prefix:
-				eei_parse_parsePrefix(parser, rule, previous, token);
-				break;
-
-			case eei_rule_infix:
-				//If allowed fold all prefixes before going any further
-				//	since they bind stonger than the infixes.
-				if (GET_RULE_FOLD(rule) != eei_rule_no_fold)
-					eei_parse_foldPrefix(parser, GET_RULE_ENDDELIMITER(rule));
-
-				eei_parse_foldPrecedence(parser, rule);
-				eei_parse_parseInfix(parser, rule, token);
-				break;
-
-			case eei_rule_postfix:
-				//If allowed fold all prefixes before going any further
-				//	since they bind stonger than the infixes.
-				if (GET_RULE_FOLD(rule) != eei_rule_no_fold)
-					eei_parse_foldPrefix(parser, 0);
-
-				eei_parse_foldPrecedence(parser, rule);
-				eei_parse_parsePostfix(parser, rule, token);
-				break;
-
-			default:
-				eei_parse_error(parser, ee_parser_error, token);
-		}
+		eei_parse_rule_error(parser, token);
+		return;
 	}
-	else
+
+	//Use the actual found rule, since it might be not the one expected
+	switch (GET_RULE_TYPE(rule))
 	{
-		//The current token is not any expected token - it must be some END delimiter
-		eei_parse_foldEndDilimiter(parser, token);
+		case eei_rule_prefix:
+			eei_parse_parsePrefix(parser, rule, previous, token);
+			break;
+
+		case eei_rule_infix:
+			//If allowed fold all prefixes before going any further
+			//	since they bind stonger than the infixes.
+			if (GET_RULE_FOLD(rule) != eei_rule_no_fold)
+				eei_parse_foldPrefix(parser, GET_RULE_ENDDELIMITER(rule));
+
+			eei_parse_foldPrecedence(parser, rule);
+			eei_parse_parseInfix(parser, rule, token);
+			break;
+
+		case eei_rule_postfix:
+			//If allowed fold all prefixes before going any further
+			//	since they bind stonger than the infixes.
+			if (GET_RULE_FOLD(rule) != eei_rule_no_fold)
+				eei_parse_foldPrefix(parser, 0);
+
+			eei_parse_foldPrecedence(parser, rule);
+			eei_parse_parsePostfix(parser, rule, token);
+			break;
+
+		case eei_rule_end:
+			eei_parse_foldEndDilimiter(parser,rule,token);
+			break;
 	}
 }
 
 void eei_parse_init(eei_parser * parser)
 {
-	eei_parser_node node;
-	eei_parser_token token;
-
 	parser->status = ee_parser_ok;
-	parser->error_token.token = SIMPLE_TOKEN(eei_token_sof);
+	parser->error_token.token = SOF_TOKEN();
 	parser->error_token.text.start = 0;
 	parser->error_token.text.end = parser->expression_size;
 
-	node.text.start = 0;
-	node.text.end = parser->expression_size;
-	node.precedence = eei_precedence_lowest;
-	node.next = eei_rule_prefix;
-	node.stack_top = 0;
-
-	//Push a "start" rule - this will simplify things during processing
-	node.rule = eei_find_rule(SIMPLE_TOKEN(eei_token_sof), eei_rule_prefix, SENTINEL_RULE());
-	eei_stack_push(&parser->stack, &node);
-
-	//Start a group - this allows to remove many tests for an empty stack
-	token.token = SIMPLE_TOKEN(eei_token_group);
-	token.text.start = 0;
-	token.text.end = parser->expression_size;
-	eei_parse_pushGroupRule(parser, &token);
+	//Inject a SOF token into the parser
+	eei_parse_parsePrefix(parser, SOF_RULE(), 0, &parser->error_token);
 }
 
 void eei_parse_expression(eei_parser * parser)
@@ -2439,14 +2635,14 @@ ee_parser_reply ee_guestimate(const ee_char_type * expression, ee_data_size * si
 	int operators = 0;
 
 	eei_lexer_state state;
-	eei_token_type token_type = eei_token_eof;
+	eei_token token = SOF_TOKEN();
 
 	state.head = expression;
 	do
 	{
-		token_type = GET_TOKEN_TYPE(eei_lexer_next_token(&state));
+		token = eei_lexer_next_token(&state);
 
-		switch (token_type)
+		switch (GET_TOKEN_TYPE(token))
 		{
 			case eei_token_identifier:
 				identifiers++;
@@ -2478,7 +2674,7 @@ ee_parser_reply ee_guestimate(const ee_char_type * expression, ee_data_size * si
 
 		}
 
-	} while ((token_type != eei_token_eof) && (token_type != eei_token_error));
+	} while (GET_TOKEN_TYPE(token) != eei_token_internal);
 
 	size->expression = state.head - expression;
 
@@ -2488,14 +2684,13 @@ ee_parser_reply ee_guestimate(const ee_char_type * expression, ee_data_size * si
 	size->constants = numbers;
 	size->variables = identifiers;
 	size->functions = identifiers + operators;
-	size->instructions = numbers + identifiers + operators;
-	size->instructions *= size->instructions;
-	size->compilation_stack = 2 + numbers + identifiers + operators * 2 + groups * 2;
+	size->instructions = numbers + identifiers*2 + operators*2;
+	size->compilation_stack = 4 + numbers + identifiers + operators * 2 + groups * 2;
 	size->runtime_stack = numbers + actuals + groups * 2 + operators + identifiers;
 
 	eei_guestimate_calculate_sizes(size);
 
-	return (token_type == eei_token_error) ? ee_parser_error : ee_parser_ok;
+	return (token == ERROR_TOKEN()) ? ee_parser_error : ee_parser_ok;
 }
 
 ee_parser_reply ee_compile(

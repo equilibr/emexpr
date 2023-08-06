@@ -7,7 +7,7 @@ int main()
 {
 	test_sizes();
 	printf("\n");
-//	compare();
+	compare();
 
 	return 0;
 }

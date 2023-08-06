@@ -267,6 +267,9 @@ typedef enum
 	//	erroneous expressions and problems with the parser.
 	ee_parser_expression,
 
+	//An unexpected token was encountered
+	ee_parser_expression_unexpected,
+
 	//The expression has an unmatched end delimiter
 	ee_parser_expression_unmatched_end,
 
