@@ -1346,7 +1346,6 @@ typedef struct
 //	of functional recursion to hold the parser data
 typedef struct
 {
-	//TODO: Combine next & precedence into a rule and use the access macros
 	//TODO: Breakout the stack_top into a separate vector of node_index/top, to save on alignment and space.
 	//TODO: The maximum size of the vector is KNOWN - it is the count of starting delimiters in the expression!
 	//Location of the stack
