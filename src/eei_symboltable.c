@@ -74,169 +74,17 @@
 #include "eei_symboltable.h"
 #include <stddef.h>
 
+
 //Auto-selections of compilation options based on external DEFINEs'
 //-----------------------------------------------------------------
 
 #if defined(EE_USER_FUNCTION_LIBRARY)
-#	define EEI_DEFAULT_LIBRARY 0
 #	define EEI_FUNCTION_LIBRARY EE_USER_FUNCTION_LIBRARY
 #else
-#	define EEI_DEFAULT_LIBRARY 1
 #	define EEI_FUNCTION_LIBRARY eei_operators_library
 #endif
 
-//Default implementations of user modifiable items
-//------------------------------------------------
-
-//This provides the library default implementation of things the user can modify/override.
-//The implementation is at the top of the code to make sure it only uses declarations visible
-//	to the external user of the library, e.g. our header file.
-
-#if EEI_DEFAULT_LIBRARY
-
-int eei_operator_subneg(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
-{
-	switch (arity)
-	{
-		case 1:
-			*result = -actuals[0];
-			return 0;
-
-		case 2:
-			*result = actuals[0] - actuals[1];
-			return 0;
-
-		default:
-			return 1;
-	}
-}
-
-int eei_operator_plus(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
-{
-	(void)arity;
-	*result = actuals[0] + actuals[1];
-	return 0;
-}
-
-int eei_operator_mul(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
-{
-	(void)arity;
-	*result = actuals[0] * actuals[1];
-	return 0;
-}
-
-int eei_operator_div(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
-{
-	(void)arity;
-	*result = actuals[0] / actuals[1];
-	return 0;
-}
-
-int eei_operator_equal(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
-{
-	(void)arity;
-	*result = (actuals[0] == actuals[1]) ? 1 : 0;
-	return 0;
-}
-
-int eei_operator_greater(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
-{
-	(void)arity;
-	*result = (actuals[0] > actuals[1]) ? 1 : 0;
-	return 0;
-}
-
-int eei_operator_less(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
-{
-	(void)arity;
-	*result = (actuals[0] < actuals[1]) ? 1 : 0;
-	return 0;
-}
-
-int eei_operator_notequal(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
-{
-	(void)arity;
-	*result = (actuals[0] != actuals[1]) ? 1 : 0;
-	return 0;
-}
-
-int eei_operator_greaterequal(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
-{
-	(void)arity;
-	*result = (actuals[0] >= actuals[1]) ? 1 : 0;
-	return 0;
-}
-
-int eei_operator_lessequal(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
-{
-	(void)arity;
-	*result = (actuals[0] <= actuals[1]) ? 1 : 0;
-	return 0;
-}
-
-int eei_operator_fold_and(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
-{
-	ee_variable_type r = (actuals[0] != 0) ? 1 : 0;
-
-	for (int i = 1; (i < arity) && (r != 0); ++i)
-		r *= (actuals[i] != 0) ? 1 : 0;
-
-	*result = r;
-	return 0;
-}
-
-int eei_operator_fold_or(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
-{
-	ee_variable_type r = (actuals[0] != 0) ? 1 : 0;
-
-	for (int i = 1; (i < arity) && (r == 0); ++i)
-		r += (actuals[i] != 0) ? 1 : 0;
-
-	*result = (r != 0) ? 1 : 0;
-	return 0;
-}
-
-int eei_operator_fold_xor(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
-{
-	ee_variable_type r = (actuals[0] != actuals[1]) ? 1 : 0;
-
-	for (int i = 2; i < arity; ++i)
-		r = (actuals[i] != r) ? 1 : 0;
-
-	*result = r;
-	return 0;
-}
-
-int eei_operator_not(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
-{
-	(void)arity;
-	*result = (actuals[0] == 0) ? 1 : 0;
-	return 0;
-}
-
-static const ee_symboltable_function eei_operators_library[] =
-{
-	{eei_operator_subneg,"-",1,ee_function_flag_prefix | ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
-	{eei_operator_subneg,"-",2,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
-	{eei_operator_plus,"+",2,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
-	{eei_operator_mul,"*",2,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
-	{eei_operator_div,"/",2,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
-
-	{eei_operator_equal,"==",2,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
-	{eei_operator_greater,">",2,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
-	{eei_operator_less,"<",2,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
-	{eei_operator_notequal,"!=",2,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
-	{eei_operator_greaterequal,">=",2,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
-	{eei_operator_lessequal,"<=",2,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
-
-	{eei_operator_fold_and,"&&",-2,ee_function_flag_prefix | ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
-	{eei_operator_fold_or,"||",-2,ee_function_flag_prefix | ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
-	{eei_operator_fold_xor,"^^",-3,ee_function_flag_prefix | ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
-	{eei_operator_not,"!",1, ee_function_flag_prefix | ee_function_flag_operator | ee_function_flag_pure},
-	{0,0,0,0}
-};
-
-#endif
+extern const ee_symboltable_function EEI_FUNCTION_LIBRARY[];
 
 
 //Symbol table lookup

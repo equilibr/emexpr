@@ -9,6 +9,7 @@ QMAKE_CFLAGS += -pedantic-errors
 
 SOURCES += \
 	extra/errors.c \
+	src/eei_defaults.c \
 	src/eei_symboltable.c \
 	src/eei_vm.c \
 	src/emexpr.c \
@@ -17,6 +18,7 @@ SOURCES += \
 	test/test_sizes.c
 
 HEADERS += \
+	src/eei_rules.h \
 	src/eei_symboltable.h \
 	src/eei_vm.h \
 	src/eelib/emexpr.h \
