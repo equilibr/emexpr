@@ -28,11 +28,17 @@
 //Allow comparison operators into variables
 #define EEI_ALLOW_COMPARE 1
 
+//Allow the selection ?: operator
+#define EEI_ALLOW_SELECT 0
+
 //Allow logical operations
 #define EEI_ALLOW_LOGIC 1
 
 //Allow simple mathematical operators
 #define EEI_ALLOW_SIMPLE_MATH 1
+
+//Allow chaning(N-ary) operators
+#define EEI_ALLOW_CHAIN_OP 0
 
 //Allow the modulus operator. Will only compile for integer variables.
 #define EEI_ALLOW_MATH_MOD 0
@@ -185,15 +191,29 @@ int eei_operator_subneg(ee_element_count arity, const ee_variable_type * actuals
 
 int eei_operator_plus(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
 {
+	ee_variable_type r = actuals[0];
+#	if EEI_ALLOW_CHAIN_OP
+	for (int i = 1; i < arity; ++i)
+		r += actuals[i];
+	*result = r;
+#	else
 	(void)arity;
 	*result = actuals[0] + actuals[1];
+#	endif
 	return 0;
 }
 
 int eei_operator_mul(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
 {
+	ee_variable_type r = actuals[0];
+#	if EEI_ALLOW_CHAIN_OP
+	for (int i = 1; i < arity; ++i)
+		r *= actuals[i];
+	*result = r;
+#	else
 	(void)arity;
 	*result = actuals[0] * actuals[1];
+#	endif
 	return 0;
 }
 
@@ -254,6 +274,15 @@ int eei_operator_lessequal(ee_element_count arity, const ee_variable_type * actu
 {
 	(void)arity;
 	*result = (actuals[0] <= actuals[1]) ? 1 : 0;
+	return 0;
+}
+#endif
+
+#if EEI_ALLOW_SELECT
+int eei_operator_select(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
+{
+	(void)arity;
+	*result = (actuals[0] != 0) ? actuals[1] : actuals[2];
 	return 0;
 }
 #endif
@@ -344,14 +373,19 @@ int eei_operator_bitinv(ee_element_count arity, const ee_variable_type * actuals
 }
 #endif
 
+#if EEI_ALLOW_CHAIN_OP
+enum { ChainArity = -3 };
+#else
+enum { ChainArity = 2 };
+#endif
 
 const ee_symboltable_function eei_operators_library[] =
 {
 #	if EEI_ALLOW_SIMPLE_MATH
 	{eei_operator_subneg,"-",1,ee_function_flag_prefix | ee_function_flag_operator | ee_function_flag_pure},
 	{eei_operator_subneg,"-",2,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
-	{eei_operator_plus,"+",2,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
-	{eei_operator_mul,"*",2,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
+	{eei_operator_plus,"+",ChainArity,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
+	{eei_operator_mul,"*",ChainArity,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
 	{eei_operator_div,"/",2,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
 #	endif
 
@@ -366,6 +400,10 @@ const ee_symboltable_function eei_operators_library[] =
 	{eei_operator_notequal,"!=",2,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
 	{eei_operator_greaterequal,">=",2,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
 	{eei_operator_lessequal,"<=",2,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
+#	endif
+
+#	if EEI_ALLOW_SELECT
+	{eei_operator_select,"?",3,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
 #	endif
 
 #	if EEI_ALLOW_LOGIC
@@ -424,7 +462,7 @@ static const eei_rule_description eei_parser_prefix_rules[] =
 	GROUPED(TERMINAL(TOKEN(eei_token_delimiter,')'))),
 
 	//Expression end for an empty expression. Only allowed inside the SOF group
-	GROUPED(PREFIX(EOF_TOKEN())),
+	LOOKBEHIND(GROUPED(PREFIX(EOF_TOKEN()))),
 
 	SENTINEL_RULE()
 };
@@ -434,6 +472,12 @@ static const eei_rule_description eei_parser_infix_rules[] =
 #	if EEI_ALLOW_ASSIGN
 	//Variable assignment, only allowed in the SOF group
 	HANDLE(GROUPED(NOFOLD(INFIX(TOKEN(eei_token_operator,'='), eei_precedence_assign))),eei_rule_handle_assign),
+#	endif
+
+#	if EEI_ALLOW_SELECT
+	//Select operator
+	ERROR(INFIX(TOKEN(eei_token_operator,'?'), eei_precedence_select)),
+	ERROR(INFIX(TOKEN(eei_token_operator,':'), eei_precedence_select_else)),
 #	endif
 
 	//Sequence delimiter
@@ -515,6 +559,12 @@ static const eei_conditional_table_item eei_parser_lookbehind_rules[] =
 	},
 #	endif
 
+	{
+		PREFIX_RULE(EOF_TOKEN()),
+		GROUP_RULE(),
+		COPY_RULE()
+	},
+
 	{SENTINEL_RULE(),SENTINEL_RULE(),SENTINEL_RULE()}
 };
 
@@ -581,13 +631,41 @@ static const eei_conditional_table_item eei_parser_group_rules[] =
 	{SENTINEL_RULE(),SENTINEL_RULE(),SENTINEL_RULE()}
 };
 
+static const eei_conditional_table_item eei_parser_fold_rules[] =
+{
+#	if EEI_ALLOW_CHAIN_OP
+	{
+		INFIX_RULE(TOKEN(eei_token_operator,'+')),
+		INFIX_RULE(TOKEN(eei_token_operator,'+')),
+		COPY_RULE()
+	},
+	{
+		INFIX_RULE(TOKEN(eei_token_operator,'*')),
+		INFIX_RULE(TOKEN(eei_token_operator,'*')),
+		COPY_RULE()
+	},
+#	endif
+
+#	if EEI_ALLOW_SELECT
+	//Sequence delimiter of a select operator
+	{
+		INFIX_RULE(TOKEN(eei_token_operator,':')),
+		INFIX_RULE(TOKEN(eei_token_operator,'?')),
+		HANDLE(TYPE_RULE(INFIX(TOKEN(eei_token_operator,'?'), eei_precedence_select), eei_rule_end),eei_rule_handle_infix)
+	},
+	#	endif
+
+	{SENTINEL_RULE(),SENTINEL_RULE(),SENTINEL_RULE()}
+};
+
 const ee_parser_rules eei_parser_rules =
 {
 	eei_parser_prefix_rules,
 	eei_parser_infix_rules,
 	eei_parser_postfix_rules,
 	eei_parser_lookbehind_rules,
-	eei_parser_group_rules
+	eei_parser_group_rules,
+	eei_parser_fold_rules
 };
 
 #endif //#if EEI_DEFAULT_RULES

@@ -24,16 +24,18 @@ enum
 	//Must have value of 0 since the algorithm extensively depends on this!
 	eei_precedence_group = 0,
 
-	eei_precedence_assign = 1,
-	eei_precedence_comma = 2,
-	eei_precedence_logical_or = 3,
-	eei_precedence_logical_and = 4,
-	eei_precedence_compare = 5,
-	eei_precedence_power1 = 6,
-	eei_precedence_power2 = 7,
-	eei_precedence_power3 = 8,
-	eei_precedence_function = 10,
-	eei_precedence_postfix = 11,
+	eei_precedence_assign,
+	eei_precedence_comma,
+	eei_precedence_select,
+	eei_precedence_select_else=eei_precedence_select,
+	eei_precedence_logical_or,
+	eei_precedence_logical_and,
+	eei_precedence_compare,
+	eei_precedence_power1,
+	eei_precedence_power2,
+	eei_precedence_power3,
+	eei_precedence_function,
+	eei_precedence_postfix,
 
 	//Must be the last item to allow some compile-time checks!
 	eei_precedence_sentinel
@@ -182,6 +184,7 @@ typedef enum
 typedef enum
 {
 	eei_rule_handle_none,
+	eei_rule_handle_error,
 	eei_rule_handle_constant,
 	eei_rule_handle_variable,
 	eei_rule_handle_delimiter,
@@ -234,6 +237,7 @@ typedef struct
 	const eei_rule_description * postfix;
 	const eei_conditional_table_item * lookbehind;
 	const eei_conditional_table_item * group;
+	const eei_conditional_table_item * fold;
 } ee_parser_rules;
 
 
@@ -394,6 +398,11 @@ typedef enum
 	~BITMASKS(eei_rule_bits_next_size, eei_rule_bits_next_offset)) |\
 	MAKE_PART_BITS(next, eei_rule_bits_next_offset, eei_rule_bits_next_size)))
 
+//Changes the rule type
+#define TYPE_RULE(rule_description, type) ((eei_rule_description)( (rule_description &\
+	~BITMASKS(eei_rule_bits_type_size, eei_rule_bits_type_offset)) |\
+	MAKE_PART_BITS(type, eei_rule_bits_type_offset, eei_rule_bits_type_size)))
+
 //A rule that starts a group with (end) delimiters, with it own precedence stack
 #define DELIMITED(rule_description) ((eei_rule_description)( (rule_description) |\
 	MAKE_PART_BITS(1, eei_rule_bits_end_delimiter_offset, eei_rule_bits_end_delimiter_size)))
@@ -420,6 +429,8 @@ typedef enum
 #define HANDLE(rule_description, handler) ((eei_rule_description)( (rule_description) |\
 	MAKE_PART_BITS(handler, eei_rule_bits_handler_offset, eei_rule_bits_handler_size)))
 
+//A rule with a default error handle
+#define ERROR(rule_description) HANDLE(rule_description, eei_rule_handle_error)
 
 //Conditional table rules
 
@@ -448,7 +459,6 @@ typedef enum
 #define SOF_RULE() DELIMITED(PREFIX(SOF_TOKEN()))
 
 //A special rule that marks parsing groups
-//Also used in conditional tables to request the use of the original rule with a handle added
 #define GROUP_RULE() INFIX(GROUP_TOKEN(),eei_precedence_group)
 
 
