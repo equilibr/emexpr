@@ -19,6 +19,9 @@
 //Allow using prefix operators with functional syntax
 #define EEI_ALLOW_PREFIX_OPERATOR_FUNCTIONS 1
 
+//Allow calling functions by name
+#define EEI_ALLOW_FUNCTIONS 1
+
 //Allow assigning into variables
 #define EEI_ALLOW_ASSIGN 1
 
@@ -42,6 +45,10 @@
 
 //Allow the power operator. No default implementation.
 #define EEI_ALLOW_POWER_MATH 0
+
+//Allow parsing of postfix operators.
+//Even when enabled none are actually defined in the default library.
+#define EEI_ALLOW_POSTFIX 1
 
 
 //Auto-selections of compilation options based on external DEFINEs'
@@ -432,8 +439,10 @@ static const eei_rule_description eei_parser_infix_rules[] =
 	//Sequence delimiter
 	HANDLE(GROUPED(INFIX(TOKEN(eei_token_delimiter,','), eei_precedence_comma)),eei_rule_handle_delimiter),
 
+#	if EEI_ALLOW_FUNCTIONS
 	//Function call
 	DELIMITED(INFIX(TOKEN(eei_token_delimiter,'('), eei_precedence_function)),
+#	endif
 
 	//Closing parens for groups and functions calls. Will produce different rules depending on the current group.
 	//The group folded by this rule could be considered as a post-fix, thus an infix must follow.
@@ -488,7 +497,9 @@ static const eei_rule_description eei_parser_infix_rules[] =
 
 static const eei_rule_description eei_parser_postfix_rules[] =
 {
+#	if EEI_ALLOW_POSTFIX
 	HANDLE(POSTFIX(SIMPLE_TOKEN(eei_token_identifier)), eei_rule_handle_postfix),
+#	endif
 
 	SENTINEL_RULE()
 };
