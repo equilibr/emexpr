@@ -17,6 +17,14 @@ extern "C" {
 //User modifiable types
 //---------------------
 
+//The type of the variable handled by the engine
+//This type must be copyable by the compiler using the assignment(=) syntax!
+typedef double ee_variable_type;
+
+
+//User modifiable API types
+//-------------------------
+
 //The underlying type of an expression character
 typedef char ee_char_type;
 
@@ -25,10 +33,6 @@ typedef signed short ee_memory_size;
 
 //The type used for counting various elements of the parsing and execution environment
 typedef unsigned char ee_element_count;
-
-//The type of the variable handled by the engine
-//This type must be copyable by the compiler using the assignment(=) syntax!
-typedef double ee_variable_type;
 
 //The type used for counting function parameters
 typedef signed char ee_arity;

@@ -13,11 +13,35 @@
 //User-selectable definitions
 //---------------------------
 
+//Allow the constant scanner/parser to look for a fractional part.
+#define EEI_CONSTANT_FRACT 1
+
 //Allow using prefix operators with functional syntax
 #define EEI_ALLOW_PREFIX_OPERATOR_FUNCTIONS 1
 
 //Allow assigning into variables
 #define EEI_ALLOW_ASSIGN 1
+
+//Allow comparison operators into variables
+#define EEI_ALLOW_COMPARE 1
+
+//Allow logical operations
+#define EEI_ALLOW_LOGIC 1
+
+//Allow simple mathematical operators
+#define EEI_ALLOW_SIMPLE_MATH 1
+
+//Allow the modulus operator. Will only compile for integer variables.
+#define EEI_ALLOW_MATH_MOD 0
+
+//Allow bit manipulation. Will only compile for integer variables.
+#define EEI_ALLOW_BIT 0
+
+//Allow the xor(^) operator when bit manupulations are allowed.
+#define EEI_ALLOW_BIT_XOR 0
+
+//Allow the power operator. No default implementation.
+#define EEI_ALLOW_POWER_MATH 0
 
 
 //Auto-selections of compilation options based on external DEFINEs'
@@ -41,6 +65,12 @@
 #	define EEI_DEFAULT_PARSER_RULES 1
 #endif
 
+//Disallow the xor & power at the same time since they use the same operator token
+#if EEI_ALLOW_BIT && EEI_ALLOW_BIT_XOR && EEI_ALLOW_POWER_MATH
+#	undef EEI_ALLOW_POWER_MATH
+#	define EEI_ALLOW_POWER_MATH 0
+#endif
+
 
 //This provides the library defaults.
 //Theese are implementation defaults of things the user can modify/override.
@@ -59,6 +89,7 @@ const ee_char_type * eei_constant_scanner(const ee_char_type * start)
 	while ( (*start >= '0') && (*start <= '9') )
 		++start;
 
+#	if EEI_CONSTANT_FRACT
 	//Look for fractional part
 	if (*start != '.')
 		return start;
@@ -72,6 +103,7 @@ const ee_char_type * eei_constant_scanner(const ee_char_type * start)
 
 	while ( (*start >= '0') && (*start <= '9') )
 		++start;
+#	endif
 
 	return start;
 }
@@ -82,6 +114,8 @@ int eei_constant_parser(const ee_char_type * start, const ee_char_type * end, ee
 	enum {numeric_base = 10};
 
 	ee_variable_type integer = 0;
+
+#	if EEI_CONSTANT_FRACT
 	ee_variable_type fractional = 0;
 
 	while (start < end)
@@ -102,6 +136,16 @@ int eei_constant_parser(const ee_char_type * start, const ee_char_type * end, ee
 		}
 
 	*result = integer + fractional;
+#	else
+	while (start < end)
+	{
+		integer *= numeric_base;
+		integer += *start - '0';
+		start++;
+	}
+
+	*result = integer;
+#	endif
 
 	return 0;
 }
@@ -114,6 +158,7 @@ int eei_constant_parser(const ee_char_type * start, const ee_char_type * end, ee
 //To be used in conjunctions with the default parser rules.
 //---------------------------------------------------------
 
+#if EEI_ALLOW_SIMPLE_MATH
 int eei_operator_subneg(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
 {
 	switch (arity)
@@ -151,7 +196,18 @@ int eei_operator_div(ee_element_count arity, const ee_variable_type * actuals, e
 	*result = actuals[0] / actuals[1];
 	return 0;
 }
+#endif
 
+#if EEI_ALLOW_MATH_MOD
+int eei_operator_mod(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
+{
+	(void)arity;
+	*result = actuals[0] % actuals[1];
+	return 0;
+}
+#endif
+
+#if EEI_ALLOW_COMPARE
 int eei_operator_equal(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
 {
 	(void)arity;
@@ -193,37 +249,39 @@ int eei_operator_lessequal(ee_element_count arity, const ee_variable_type * actu
 	*result = (actuals[0] <= actuals[1]) ? 1 : 0;
 	return 0;
 }
+#endif
 
+#if EEI_ALLOW_LOGIC
 int eei_operator_fold_and(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
 {
-	ee_variable_type r = (actuals[0] != 0) ? 1 : 0;
+	int r = (actuals[0] != 0) ? 1 : 0;
 
 	for (int i = 1; (i < arity) && (r != 0); ++i)
-		r *= (actuals[i] != 0) ? 1 : 0;
+		r &= (actuals[i] != 0) ? 1 : 0;
 
-	*result = r;
+	*result = (r & 1) ? 1 : 0;
 	return 0;
 }
 
 int eei_operator_fold_or(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
 {
-	ee_variable_type r = (actuals[0] != 0) ? 1 : 0;
+	int r = (actuals[0] != 0) ? 1 : 0;
 
 	for (int i = 1; (i < arity) && (r == 0); ++i)
-		r += (actuals[i] != 0) ? 1 : 0;
+		r |= (actuals[i] != 0) ? 1 : 0;
 
-	*result = (r != 0) ? 1 : 0;
+	*result = (r & 1) ? 1 : 0;
 	return 0;
 }
 
 int eei_operator_fold_xor(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
 {
-	ee_variable_type r = (actuals[0] != actuals[1]) ? 1 : 0;
+	int r = (actuals[0] != actuals[1]) ? 1 : 0;
 
 	for (int i = 2; i < arity; ++i)
-		r = (actuals[i] != r) ? 1 : 0;
+		r ^= (actuals[i] != 0) ? 1 : 0;
 
-	*result = r;
+	*result = (r & 1) ? 1 : 0;
 	return 0;
 }
 
@@ -233,26 +291,92 @@ int eei_operator_not(ee_element_count arity, const ee_variable_type * actuals, e
 	*result = (actuals[0] == 0) ? 1 : 0;
 	return 0;
 }
+#endif
+
+#if EEI_ALLOW_BIT
+int eei_operator_fold_bitand(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
+{
+	ee_variable_type r = actuals[0];
+
+	for (int i = 1; (i < arity) && (r != 0); ++i)
+		r &= actuals[i];
+
+	*result = r;
+	return 0;
+}
+
+int eei_operator_fold_bitor(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
+{
+	ee_variable_type r = actuals[0];
+
+	for (int i = 1; (i < arity) && (r == 0); ++i)
+		r |= actuals[i];
+
+	*result = r;
+	return 0;
+}
+
+#if EEI_ALLOW_BIT_XOR
+int eei_operator_fold_bitxor(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
+{
+	ee_variable_type r = actuals[0] ^ actuals[1];
+
+	for (int i = 2; i < arity; ++i)
+		r ^= actuals[i];
+
+	*result = r;
+	return 0;
+}
+#endif
+
+int eei_operator_bitinv(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
+{
+	(void)arity;
+	*result = ~actuals[0];
+	return 0;
+}
+#endif
+
 
 const ee_symboltable_function eei_operators_library[] =
 {
-	{eei_operator_subneg,"-",1,ee_function_flag_prefix | ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
+#	if EEI_ALLOW_SIMPLE_MATH
+	{eei_operator_subneg,"-",1,ee_function_flag_prefix | ee_function_flag_operator | ee_function_flag_pure},
 	{eei_operator_subneg,"-",2,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
 	{eei_operator_plus,"+",2,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
 	{eei_operator_mul,"*",2,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
 	{eei_operator_div,"/",2,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
+#	endif
 
+#	if EEI_ALLOW_MATH_MOD
+	{eei_operator_mod,"%",2,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
+#	endif
+
+#	if EEI_ALLOW_COMPARE
 	{eei_operator_equal,"==",2,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
 	{eei_operator_greater,">",2,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
 	{eei_operator_less,"<",2,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
 	{eei_operator_notequal,"!=",2,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
 	{eei_operator_greaterequal,">=",2,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
 	{eei_operator_lessequal,"<=",2,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
+#	endif
 
-	{eei_operator_fold_and,"&&",-2,ee_function_flag_prefix | ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
-	{eei_operator_fold_or,"||",-2,ee_function_flag_prefix | ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
-	{eei_operator_fold_xor,"^^",-3,ee_function_flag_prefix | ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
+#	if EEI_ALLOW_LOGIC
+	{eei_operator_fold_and,"&&",-2, ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
+	{eei_operator_fold_or,"||",-2,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
+	{eei_operator_fold_xor,"^^",-3,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
 	{eei_operator_not,"!",1, ee_function_flag_prefix | ee_function_flag_operator | ee_function_flag_pure},
+#	endif
+
+#	if EEI_ALLOW_BIT
+	{eei_operator_fold_bitand,"&",-2, ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
+	{eei_operator_fold_bitor,"|",-2,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
+#	if EEI_ALLOW_BIT_XOR
+	{eei_operator_fold_bitxor,"^",-3,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
+#	endif
+	{eei_operator_bitinv,"~",1, ee_function_flag_prefix | ee_function_flag_operator | ee_function_flag_pure},
+#	endif
+
 	{0,0,0,0}
 };
 
@@ -275,8 +399,15 @@ static const eei_rule_description eei_parser_prefix_rules[] =
 	//Prefix-operator call
 	LOOKBEHIND(PREFIX(TOKEN(eei_token_delimiter,'('))),
 #	else
+#	if EEI_ALLOW_SIMPLE_MATH
 	HANDLE(PREFIX(TOKEN(eei_token_operator,'-')),eei_rule_handle_prefix),
+#	endif
+#	if EEI_ALLOW_LOGIC
 	HANDLE(PREFIX(TOKEN(eei_token_operator,'!')),eei_rule_handle_prefix),
+#	endif
+#	if EEI_ALLOW_BIT
+	HANDLE(PREFIX(TOKEN(eei_token_operator,'~')),eei_rule_handle_prefix),
+#	endif
 #	endif
 
 	//Grouping parens
@@ -309,25 +440,45 @@ static const eei_rule_description eei_parser_infix_rules[] =
 	GROUPED(INFIX(TOKEN(eei_token_delimiter,')'), eei_precedence_group)),
 
 	//Normal operators
+
+#	if EEI_ALLOW_LOGIC
 	HANDLE(INFIX(TOKEN(eei_token_operator,token_symbol_op_or), eei_precedence_logical_or), eei_rule_handle_infix),
 	HANDLE(INFIX(TOKEN(eei_token_operator,token_symbol_op_xor), eei_precedence_logical_or), eei_rule_handle_infix),
 	HANDLE(INFIX(TOKEN(eei_token_operator,token_symbol_op_and), eei_precedence_logical_and), eei_rule_handle_infix),
+#	endif
+
+#	if EEI_ALLOW_COMPARE
 	HANDLE(INFIX(TOKEN(eei_token_operator,'<'), eei_precedence_compare), eei_rule_handle_infix),
 	HANDLE(INFIX(TOKEN(eei_token_operator,'>'), eei_precedence_compare), eei_rule_handle_infix),
 	HANDLE(INFIX(TOKEN(eei_token_operator,token_symbol_op_eq), eei_precedence_compare), eei_rule_handle_infix),
 	HANDLE(INFIX(TOKEN(eei_token_operator,token_symbol_op_neq), eei_precedence_compare), eei_rule_handle_infix),
 	HANDLE(INFIX(TOKEN(eei_token_operator,token_symbol_op_gte), eei_precedence_compare), eei_rule_handle_infix),
 	HANDLE(INFIX(TOKEN(eei_token_operator,token_symbol_op_lte), eei_precedence_compare), eei_rule_handle_infix),
+#	endif
+
+#	if EEI_ALLOW_SIMPLE_MATH
 	HANDLE(INFIX(TOKEN(eei_token_operator,'+'), eei_precedence_power1), eei_rule_handle_infix),
 	HANDLE(INFIX(TOKEN(eei_token_operator,'-'), eei_precedence_power1), eei_rule_handle_infix),
-	HANDLE(INFIX(TOKEN(eei_token_operator,'|'), eei_precedence_power1), eei_rule_handle_infix),
 	HANDLE(INFIX(TOKEN(eei_token_operator,'*'), eei_precedence_power2), eei_rule_handle_infix),
-	HANDLE(INFIX(TOKEN(eei_token_operator,'&'), eei_precedence_power2), eei_rule_handle_infix),
 	HANDLE(INFIX(TOKEN(eei_token_operator,'/'), eei_precedence_power2), eei_rule_handle_infix),
-	HANDLE(INFIX(TOKEN(eei_token_operator,'%'), eei_precedence_power2), eei_rule_handle_infix),
+#	endif
 
+#	if EEI_ALLOW_BIT
+	HANDLE(INFIX(TOKEN(eei_token_operator,'|'), eei_precedence_power1), eei_rule_handle_infix),
+	HANDLE(INFIX(TOKEN(eei_token_operator,'&'), eei_precedence_power2), eei_rule_handle_infix),
+#	if EEI_ALLOW_BIT_XOR
+	HANDLE(INFIX(TOKEN(eei_token_operator,'^'), eei_precedence_power2), eei_rule_handle_infix),
+#	endif
+#	endif
+
+#	if EEI_ALLOW_MATH_MOD
+	HANDLE(INFIX(TOKEN(eei_token_operator,'%'), eei_precedence_power2), eei_rule_handle_infix),
+#	endif
+
+#	if EEI_ALLOW_POWER_MATH
 	//A right-binding operator
 	HANDLE(RIGHTINFIX(TOKEN(eei_token_operator,'^'), eei_precedence_power3), eei_rule_handle_infix),
+#	endif
 
 	//Expression end for an normal expression. Will fold everything before closing the group.
 	GROUPED(INFIX(EOF_TOKEN(), eei_precedence_group)),

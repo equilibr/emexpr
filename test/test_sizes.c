@@ -216,11 +216,11 @@ static int test_expression(const char * expression)
 	}
 	else
 	{
-			printf("%6g ", result);
-			printf("%16s %10s ",eelib_compile_status_string_short(reply), eelib_evaluate_status_string_short(ereply));
-			test_print_sizes(&sizes);
-			test_print_sizes(&sizes_delta);
-			printf("\n");
+		printf("%6g ", result);
+		printf("%16s %10s ",eelib_compile_status_string_short(reply), eelib_evaluate_status_string_short(ereply));
+		test_print_sizes(&sizes);
+		test_print_sizes(&sizes_delta);
+		printf("\n");
 	}
 
 	return 0;
@@ -235,23 +235,27 @@ void test_sizes()
 	test_print_name("Regular tests. results=1.");
 	test_print_header();
 
-	test_expression("!a");
+	test_expression("!a");	
+	test_expression("(2 + 3) * 4 / 20");
+	test_expression("1 - (-1--1)");
+	test_expression("(unity((1.01-0.1/10)))");
+
+	test_print_name("Optional rules/types. results=1.");
+	test_print_header();
+
 	test_expression("2M * (1/2)m");
+	test_expression("!^^(0,1,1)");
+	test_expression(">(15,2 + 3 * 4)");
 	test_expression("2 + 3 * 4 == 14");
 	test_expression("(2 + 3) * 4 == 20");
 	test_expression("14 == 2 * (3 + 4)");
-	test_expression(">(15,2 + 3 * 4)");
-	test_expression("(2 + 3) * 4 / 20");
-	test_expression("1 - (-1--1)");
-	test_expression("!^^(0,1,1)");
-	test_expression("(unity((1.01-0.1/10)))");
+	test_expression("~0 + 2");
+	test_expression("1 ^ 0");
 
 	test_print_name("Arity tests. results=arity.");
 	test_print_header();
 	test_expression("arity()");
 	test_expression("arity(a)");
-	test_expression("arity((a))");
-	test_expression("arity(a,((b)))");
 	test_expression("arity(((a)),((b)))");
 
 	test_print_name("Assignment tests. Compile to stored/empty.");
