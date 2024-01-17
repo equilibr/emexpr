@@ -235,22 +235,23 @@ void test_sizes()
 	test_print_name("Regular tests. results=1.");
 	test_print_header();
 
-	test_expression("!a");	
-	test_expression("(2 + 3) * 4 / 20");
+	test_expression("!a");
+	test_expression("(0 + 2 + 3) * 4 / 20");
 	test_expression("1 - (-1--1)");
 	test_expression("(unity((1.01-0.1/10)))");
 
 	test_print_name("Optional rules/types. results=1.");
 	test_print_header();
 
+	test_expression("1+1 ? 2/2 : (0)");
+	test_expression("2 ? 3?1:4 : 5?6:7");
+	test_expression("0 ? 2?3:4 : 5?1:6");
 	test_expression("2M * (1/2)m");
 	test_expression("!^^(0,1,1)");
 	test_expression(">(15,2 + 3 * 4)");
 	test_expression("2 + 3 * 4 == 14");
 	test_expression("(2 + 3) * 4 == 20");
 	test_expression("14 == 2 * (3 + 4)");
-	test_expression("~0 + 2");
-	test_expression("1 ^ 0");
 
 	test_print_name("Arity tests. results=arity.");
 	test_print_header();
@@ -285,6 +286,9 @@ void test_sizes()
 	//Refuse wrong arity	
 	test_expression("-(1,0,1)");
 	test_expression("&&()");
+	test_expression("1+");
+	test_expression("2?1");
+	test_expression("2?1:0:4");
 
 	//Refuse no function
 	test_expression("&2");

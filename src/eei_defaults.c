@@ -29,7 +29,7 @@
 #define EEI_ALLOW_COMPARE 1
 
 //Allow the selection ?: operator
-#define EEI_ALLOW_SELECT 0
+#define EEI_ALLOW_SELECT 1
 
 //Allow logical operations
 #define EEI_ALLOW_LOGIC 1
@@ -38,16 +38,24 @@
 #define EEI_ALLOW_SIMPLE_MATH 1
 
 //Allow chaning(N-ary) operators
-#define EEI_ALLOW_CHAIN_OP 0
+#define EEI_ALLOW_CHAIN_OP 1
 
-//Allow the modulus operator. Will only compile for integer variables.
-#define EEI_ALLOW_MATH_MOD 0
+//Allow the modulus operator.
+#define EEI_ALLOW_MATH_MOD 1
 
-//Allow bit manipulation. Will only compile for integer variables.
-#define EEI_ALLOW_BIT 0
+//Use the default implementation of the modulus operator.
+//Will only compile for integer variables.
+#define EEI_USE_MATH_MOD 0
+
+//Allow bit manipulation operators.
+#define EEI_ALLOW_BIT 1
 
 //Allow the xor(^) operator when bit manupulations are allowed.
-#define EEI_ALLOW_BIT_XOR 0
+#define EEI_ALLOW_BIT_XOR 1
+
+//Use the default implementation of the bit manipulation operators.
+//Will only compile for integer variables.
+#define EEI_USE_BIT 0
 
 //Allow the power operator. No default implementation.
 #define EEI_ALLOW_POWER_MATH 0
@@ -191,8 +199,8 @@ int eei_operator_subneg(ee_element_count arity, const ee_variable_type * actuals
 
 int eei_operator_plus(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
 {
-	ee_variable_type r = actuals[0];
 #	if EEI_ALLOW_CHAIN_OP
+	ee_variable_type r = actuals[0];
 	for (int i = 1; i < arity; ++i)
 		r += actuals[i];
 	*result = r;
@@ -205,8 +213,8 @@ int eei_operator_plus(ee_element_count arity, const ee_variable_type * actuals, 
 
 int eei_operator_mul(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
 {
-	ee_variable_type r = actuals[0];
 #	if EEI_ALLOW_CHAIN_OP
+	ee_variable_type r = actuals[0];
 	for (int i = 1; i < arity; ++i)
 		r *= actuals[i];
 	*result = r;
@@ -225,7 +233,7 @@ int eei_operator_div(ee_element_count arity, const ee_variable_type * actuals, e
 }
 #endif
 
-#if EEI_ALLOW_MATH_MOD
+#if EEI_ALLOW_MATH_MOD && EEI_USE_MATH_MOD
 int eei_operator_mod(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
 {
 	(void)arity;
@@ -329,7 +337,7 @@ int eei_operator_not(ee_element_count arity, const ee_variable_type * actuals, e
 }
 #endif
 
-#if EEI_ALLOW_BIT
+#if EEI_ALLOW_BIT && EEI_USE_BIT
 int eei_operator_fold_bitand(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
 {
 	ee_variable_type r = actuals[0];
@@ -389,7 +397,7 @@ const ee_symboltable_function eei_operators_library[] =
 	{eei_operator_div,"/",2,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
 #	endif
 
-#	if EEI_ALLOW_MATH_MOD
+#	if EEI_ALLOW_MATH_MOD && EEI_USE_MATH_MOD
 	{eei_operator_mod,"%",2,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
 #	endif
 
@@ -413,7 +421,7 @@ const ee_symboltable_function eei_operators_library[] =
 	{eei_operator_not,"!",1, ee_function_flag_prefix | ee_function_flag_operator | ee_function_flag_pure},
 #	endif
 
-#	if EEI_ALLOW_BIT
+#	if EEI_ALLOW_BIT && EEI_USE_BIT
 	{eei_operator_fold_bitand,"&",-2, ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
 	{eei_operator_fold_bitor,"|",-2,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
 #	if EEI_ALLOW_BIT_XOR
