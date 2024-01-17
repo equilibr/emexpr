@@ -1003,6 +1003,10 @@ static inline ee_parser_reply eei_parse_done_node(eei_parser * parser, const eei
 			const eei_parser_token token = {GET_RULE_TOKEN(node->rule), node->text};
 			return eei_parse_error(parser, reply, &token);
 		}
+
+		//After the handler is done the stack top holds the node who will
+		// be folding over the element created by the handler.
+		eei_stack_top(&parser->stack, 0)->elements++;
 	}
 
 	return ee_parser_ok;
@@ -1049,13 +1053,14 @@ static inline void eei_parse_parsePrefix(
 		const eei_rule_description previous,
 		const eei_parser_token * token)
 {
-	//Push the rule itself
+	//Inherit the current precedence.
+	//No elements are yet folded for the prefix.
 	eei_parse_push(
 				parser,
 				rule,
 				GET_RULE_PRECEDENCE(previous),
 				token,
-				1);
+				0);
 
 	if (GET_RULE_ENDDELIMITER(rule))
 		//Push a special group to reset the precedence inside the delimited group
@@ -1069,6 +1074,13 @@ static inline void eei_parse_parseInfix(
 		const eei_rule_description rule,
 		const eei_parser_token * token)
 {
+	//This is only called when the first(left) operand is already folded.
+	//Since it was folded in the previous context its count was
+	// added to the current stack top. We steal it to ourselves.
+	eei_stack_top(&parser->stack,0)->elements--;
+
+	//Set the precedence according to the associativity.
+	//Mark we already have one element.
 	eei_parse_push(
 				parser,
 				rule,
@@ -1076,7 +1088,7 @@ static inline void eei_parse_parseInfix(
 				? GET_RULE_PRECEDENCE(rule)
 				: GET_RULE_PRECEDENCE(rule) - 1,
 				token,
-				2);
+				1);
 
 	if (GET_RULE_ENDDELIMITER(rule))
 		//Push a special group to reset the precedence inside the delimited group
@@ -1090,6 +1102,13 @@ static inline void eei_parse_parsePostfix(
 		const eei_rule_description rule,
 		const eei_parser_token * token)
 {
+	//This is only called when the first(left) operand is already folded.
+	//Since it was folded in the previous context its count was
+	// added to the current stack top. We steal it to ourselves.
+	eei_stack_top(&parser->stack,0)->elements--;
+
+	//Set the precedence according to the associativity.
+	//Mark we already have one element.
 	eei_parse_push(
 				parser,
 				rule,
@@ -1162,54 +1181,27 @@ static void eei_parse_foldEndDilimiter(
 	}
 
 	//This rule closes the current group.
-	//Replace the synthetic group rule with it, so it will be folded correctly.
-	const int currentGroup = parser->currentGroup;
-	int group = currentGroup;
-
-
 	//Replace the current synthetic group rule with the actual closing rule of the group.
 	//This allows to just fold this node in sequence with the others while, also,
-	// keeping the original group starting node just above it on the stack.
+	// keeping the original group starting node just below it on the stack.
 	//This allows the closing rule handler to modify its behaviour based on the original
 	// group openning rule.
+
+	const int currentGroup = parser->currentGroup;
+	int group = currentGroup + 1;
 
 	eei_parser_node node;
 	node.text.start = token->text.start;
 	node.text.end = token->text.end;
 	node.rule = rule;
+
 	//Preserve the element count
 	//Tis also takes into accont that the first folding performed might further update
 	// this element count, due to e.g. unfolded delimiter handler.
-	node.elements = parser->stack.stack[group+1].elements;
+	node.elements = parser->stack.stack[group].elements;
 
-	//If the current group is at the top of the stack then there are no elements inside the group.
-	//If there is something else on the stack then we need to add an element, since all others were
-	// already acounted by the native delimiters.
-	node.elements += ((group+2) != parser->stack.top) ? 1 : 0;
-
-	++group;
 	eei_stack_copynode(&parser->stack.stack[group], &node);
 
-
-	//Re-fill the node with information to represent the whole group.
-	//This node will be left behind after the group is folded to mark something was here.
-	//This is mostly needed so the empty group detection code above would correctly work for groups
-	// that only directly contain another group, as in "((0))".
-
-	//Cover the whole group
-	node.text.start = parser->stack.stack[currentGroup].text.start;
-	node.text.end = token->text.end;
-
-	//Use the original rule
-	node.rule = parser->stack.stack[currentGroup].rule;
-
-	//Make sure no fold handler will be executed
-	node.rule &= ~BITMASKS(eei_rule_bits_handler_size,eei_rule_bits_handler_offset);
-
-	//Make sure the rule is not marked as expecting any further end delimiters
-	node.rule &= ~BITMASKS(eei_rule_bits_end_delimiter_size,eei_rule_bits_end_delimiter_offset);
-
-	node.elements = 0;
 
 	//Fold up to, but not including, the just replaced rule (former synthetic group)
 	++group;
@@ -1223,7 +1215,7 @@ static void eei_parse_foldEndDilimiter(
 
 	//Before folding the rule itself we need to update the current group
 	//	to the previous one, since the rule that created the current group is,
-	//	in itself, an element of the previous one, and must be folded as part of that.
+	//	in itself, an element of the previous group, and must be folded as part of that.
 
 	//Special handling for the SOF token to avoid many check in the following code.
 	if (parser->stack.top == 2)
@@ -1259,7 +1251,7 @@ static void eei_parse_foldEndDilimiter(
 	//At this point the current group is the one the top rule was created in so we can
 	//	fold the rule that created the just-folded group.
 	//Since the behaviour of the processed nodes is unknown the below loop makes sure
-	// the stack is left in the expected state.
+	// the stack is left in the expected state, just after folding the original group opening rule.
 	group = currentGroup;
 	while (parser->stack.top > group)
 	{
@@ -1274,9 +1266,6 @@ static void eei_parse_foldEndDilimiter(
 		eei_parse_error(parser, ee_parser_stack_underflow, token);
 		return;
 	}
-
-	//Push a node represending the group just folded
-	eei_stack_push(&parser->stack, &node);
 
 	//The token is an end delimiter - that was just completely processed.
 	//This means the folded node can be treated as a postfix -
