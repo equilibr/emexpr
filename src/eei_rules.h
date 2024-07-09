@@ -421,7 +421,7 @@ typedef enum
 	MAKE_PART_BITS(1, eei_rule_bits_look_behind_offset, eei_rule_bits_look_behind_size)))
 
 //A rule with a grouped condition
-//The matching rule MUST appear in the look-behind table
+//The matching rule MUST appear in the group table
 #define GROUPED(rule_description) ((eei_rule_description)( (rule_description) |\
 	MAKE_PART_BITS(1, eei_rule_bits_grouped_offset, eei_rule_bits_grouped_size)))
 
@@ -434,10 +434,10 @@ typedef enum
 
 //Conditional table rules
 
-//A generic prefix rule for using in the conditiona lables
+//A generic prefix rule for using in the conditional tables
 #define PREFIX_RULE(token) MAKE_RULE(token, eei_rule_prefix)
 
-//A generic infix rule for using in the conditiona lables
+//A generic infix rule for using in the conditional tables
 #define INFIX_RULE(token) MAKE_RULE(token, eei_rule_infix)
 
 //A rule for the conditional table that uses the original and ends a group

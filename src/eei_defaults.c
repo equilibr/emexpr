@@ -443,10 +443,13 @@ const ee_symboltable_function eei_operators_library[] =
 static const eei_rule_description eei_parser_prefix_rules[] =
 {
 	HANDLE(TERMINAL(SIMPLE_TOKEN(eei_token_constant)),eei_rule_handle_constant),
+
+	//Identifier folding is delayed since they can be both varaible and function names
 	HANDLE(DELAYED(TERMINAL(SIMPLE_TOKEN(eei_token_identifier))),eei_rule_handle_variable),
 
 #	if EEI_ALLOW_PREFIX_OPERATOR_FUNCTIONS
 	//Catch-all for all operators
+	//Prefix-operators folding is delayed to have the same stack layout as regular functions when folding
 	HANDLE(DELAYED(PREFIX(SIMPLE_TOKEN(eei_token_operator))),eei_rule_handle_prefix),
 
 	//Prefix-operator call
@@ -655,7 +658,7 @@ static const eei_conditional_table_item eei_parser_fold_rules[] =
 #	endif
 
 #	if EEI_ALLOW_SELECT
-	//Sequence delimiter of a select operator
+	//Second half of a select operator
 	{
 		INFIX_RULE(TOKEN(eei_token_operator,':')),
 		INFIX_RULE(TOKEN(eei_token_operator,'?')),

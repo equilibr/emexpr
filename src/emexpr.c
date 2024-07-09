@@ -778,22 +778,23 @@ static ee_parser_reply eei_rule_handler_delimiter(eei_parser * parser, const eei
 
 static ee_parser_reply eei_rule_handler_group(eei_parser * parser, const eei_parser_node * node)
 {
-	//When a group is folded the group start rule is at the top of the stack.
-	//That rule holds information about the number of elements in the group.
+	//The group is folded over the node contaning the group end rule.
+	//That node holds information about the number of elements in the group.
 
-	//Set the error token to the folded node, since we don't have the correct identifier yet
+	//Set the error token to the folded node for now
 	eei_parser_token error = {GET_RULE_TOKEN(node->rule), node->text};
 
-	//An group head must be on the stack at this point
+	//The group start rule must be on the stack at this point.
 	eei_parser_node head;
 
-	//Pop it since we're going to use it as the function name
+	//Pop it since its no longer needed
 	ee_parser_reply reply = eei_parse_pop(parser, &head, &error);
 
 	if (reply != ee_parser_ok)
 		return reply;
 
-	//Now that the identifier is available change the possible error to that
+	//Now that the group start is available change the possible error to that.
+	//Only the text start is modified since its end is already correctly set from the folded-over node.
 	error.token = GET_RULE_TOKEN(head.rule);
 	error.text.start = head.text.start;
 
@@ -858,17 +859,16 @@ static ee_parser_reply eei_rule_handler_postfix(eei_parser * parser, const eei_p
 
 static ee_parser_reply eei_rule_handler_function(eei_parser * parser, const eei_parser_node * node)
 {
-	//When a function is folded the parameter group start rule is at the top of the stack.
-	//That rule holds information about the number of elements in the group.
-	//Below that is the function identifier.
+	//A function is folded over the node contaning the parameter group end rule.
+	//That node holds information about the number of elements in the group.
 
 	//Set the error token to the folded node, since we don't have the correct identifier yet
 	eei_parser_token error = {GET_RULE_TOKEN(node->rule), node->text};
 
-	//An group head must be on the stack at this point
+	//A parameter group head must be on the stack at this point
 	eei_parser_node head;
 
-	//Pop it since we're going to use it as the function name
+	//Pop it since its no longer needed
 	ee_parser_reply reply = eei_parse_pop(parser, &head, &error);
 
 	if (reply != ee_parser_ok)
@@ -1186,6 +1186,7 @@ static void eei_parse_foldEndDilimiter(
 	// keeping the original group starting node just below it on the stack.
 	//This allows the closing rule handler to modify its behaviour based on the original
 	// group openning rule.
+	//This also avoids the need for handling the synthetic group rule since its never actually folded.
 
 	const int currentGroup = parser->currentGroup;
 	int group = currentGroup + 1;
@@ -1195,15 +1196,13 @@ static void eei_parse_foldEndDilimiter(
 	node.text.end = token->text.end;
 	node.rule = rule;
 
-	//Preserve the element count
-	//Tis also takes into accont that the first folding performed might further update
-	// this element count, due to e.g. unfolded delimiter handler.
+	//The element count must be perserved since it was kept in the, about to be replaced, synthetic group rule.
 	node.elements = parser->stack.stack[group].elements;
 
 	eei_stack_copynode(&parser->stack.stack[group], &node);
 
 
-	//Fold up to, but not including, the just replaced rule (former synthetic group)
+	//Fold up to, but not including, the group end rule (former synthetic group)
 	++group;
 	while (parser->stack.top > group)
 	{
@@ -1248,7 +1247,7 @@ static void eei_parse_foldEndDilimiter(
 	//We need the rule that created the previous group, not the synthetic group itself.
 	parser->currentGroup = group - 1;
 
-	//At this point the current group is the one the top rule was created in so we can
+	//At this point the current group is the one the group start rule was created in so we can
 	//	fold the rule that created the just-folded group.
 	//Since the behaviour of the processed nodes is unknown the below loop makes sure
 	// the stack is left in the expected state, just after folding the original group opening rule.
