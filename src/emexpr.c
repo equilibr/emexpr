@@ -227,6 +227,7 @@ eei_token eei_lexer_next_token(eei_lexer_state * state)
 #define GET_RULE_FOLD(rule) (eei_rule_fold)GET_PART_BITS(rule, eei_rule_bits_fold_offset, eei_rule_bits_fold_size)
 #define GET_RULE_LOOK_BEHIND(rule) GET_PART_BITS(rule, eei_rule_bits_look_behind_offset, eei_rule_bits_look_behind_size)
 #define GET_RULE_GROUPED(rule) GET_PART_BITS(rule, eei_rule_bits_grouped_offset, eei_rule_bits_grouped_size)
+#define GET_RULE_CONDITIONAL(rule) GET_PART_BITS(rule, eei_rule_bits_conditional_offset, eei_rule_bits_conditional_size)
 #define GET_RULE_HANDLER(rule) GET_PART_BITS(rule, eei_rule_bits_handler_offset, eei_rule_bits_handler_size)
 
 //Extract a token and data from a rule description
@@ -514,9 +515,6 @@ typedef struct
 	eei_parser_token error_token;
 	ee_parser_reply status;
 
-	//True when the current rule was chained
-	int chained;
-
 	//Stack index of the current group
 	//This points to the actual rule and not the synthetic group rule
 	int currentGroup;
@@ -566,22 +564,14 @@ static inline ee_parser_reply eei_parse_push(
 	//Update the next expected rule type
 	parser->next = GET_RULE_NEXT(rule);
 
-	if (!parser->chained)
-	{
-		eei_parser_node node;
+	eei_parser_node node;
 
-		node.text.start = token->text.start;
-		node.text.end = token->text.end;
-		node.rule = PRECEDENCE_RULE(rule, precedence);
-		node.elements = elements;
+	node.text.start = token->text.start;
+	node.text.end = token->text.end;
+	node.rule = PRECEDENCE_RULE(rule, precedence);
+	node.elements = elements;
 
-		return eei_parse_error(parser, eei_stack_push(&parser->stack, &node), token);
-	}
-	else
-	{
-		parser->stack.stack[parser->stack.top-1].rule = PRECEDENCE_RULE(parser->stack.stack[parser->stack.top-1].rule, precedence);
-		return ee_parser_ok;
-	}
+	return eei_parse_error(parser, eei_stack_push(&parser->stack, &node), token);
 }
 
 static inline ee_parser_reply eei_parse_pop(
@@ -992,6 +982,28 @@ static inline ee_parser_reply eei_parse_done_node(eei_parser * parser, const eei
 		eei_rule_handler_assign
 	};
 
+	if (GET_RULE_CONDITIONAL(node->rule))
+	{
+		//The folded rule has a fold condition.
+		//Look inside the fold table for a match against the stack top.
+		const eei_rule_description fold =
+				eei_conditional_find(
+					parser->rules.fold,
+					node->rule,
+					eei_stack_top(&parser->stack, 0)->rule);
+
+		if (fold == SENTINEL_RULE())
+		{
+			//The condition failed to match.
+			const eei_parser_token token = {GET_RULE_TOKEN(node->rule), node->text};
+			return eei_parse_error(parser, ee_parser_expression_unexpected, &token);
+		}
+
+		//Replace the stack top with the morphed rule.
+		//This allows to modify the behaviour of subsequent folds.
+		eei_stack_top(&parser->stack, 0)->rule = fold;
+	}
+
 	//Test for a handler function
 	const eei_rule_handler handler = handlers[GET_RULE_HANDLER(node->rule)];
 
@@ -1008,6 +1020,10 @@ static inline ee_parser_reply eei_parse_done_node(eei_parser * parser, const eei
 		// be folding over the element created by the handler.
 		eei_stack_top(&parser->stack, 0)->elements++;
 	}
+	else
+		//No handler was executed, pass all elements to the node that will
+		// be folding over them next.
+		eei_stack_top(&parser->stack, 0)->elements += node->elements;
 
 	return ee_parser_ok;
 }
@@ -1023,28 +1039,6 @@ static inline ee_parser_reply eei_parse_done(eei_parser * parser)
 		return reply;
 
 	return eei_parse_done_node(parser, &node);
-}
-
-static inline int eei_parse_fold_rule(eei_parser * parser, const eei_rule_description rule)
-{
-	//Look inside the fold table for a match
-	const eei_rule_description fold =
-			eei_conditional_find(
-				parser->rules.fold,
-				rule,
-				eei_stack_top(&parser->stack, 0)->rule);
-
-	if (fold == SENTINEL_RULE())
-		//Notify nothing was changed
-		return 0;
-
-	//The fold table matched, rewrite the rule
-	eei_stack_top(&parser->stack, 0)->rule = fold;
-	eei_stack_top(&parser->stack, 0)->elements++;
-
-	//Notify the rule was swallowed
-	parser->chained = 1;
-	return 1;
 }
 
 static inline void eei_parse_parsePrefix(
@@ -1154,9 +1148,6 @@ static inline void eei_parse_foldPrecedence(eei_parser * parser, const eei_rule_
 		   (parser->stack.top > 1)
 		   && (GET_RULE_PRECEDENCE(eei_stack_top(&parser->stack, 0)->rule) >= precedence))
 	{
-		if (eei_parse_fold_rule(parser, rule))
-			return;
-
 		eei_parse_done(parser);
 	}
 }
@@ -1321,8 +1312,6 @@ static inline void eei_parse_token(eei_parser * parser, eei_parser_token * token
 		return;
 	}
 
-	parser->chained = 0;
-
 	//Use the actual found rule, since it might be not the one expected
 	switch (GET_RULE_TYPE(rule))
 	{
@@ -1359,7 +1348,6 @@ static inline void eei_parse_token(eei_parser * parser, eei_parser_token * token
 static void eei_parse_init(eei_parser * parser)
 {
 	parser->status = ee_parser_ok;
-	parser->chained = 0;
 	parser->error_token.token = SOF_TOKEN();
 	parser->error_token.text.start = 0;
 	parser->error_token.text.end = parser->expression_size;

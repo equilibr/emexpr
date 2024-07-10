@@ -37,9 +37,6 @@
 //Allow simple mathematical operators
 #define EEI_ALLOW_SIMPLE_MATH 1
 
-//Allow chaning(N-ary) operators
-#define EEI_ALLOW_CHAIN_OP 1
-
 //Allow the modulus operator.
 #define EEI_ALLOW_MATH_MOD 1
 
@@ -199,29 +196,15 @@ int eei_operator_subneg(ee_element_count arity, const ee_variable_type * actuals
 
 int eei_operator_plus(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
 {
-#	if EEI_ALLOW_CHAIN_OP
-	ee_variable_type r = actuals[0];
-	for (int i = 1; i < arity; ++i)
-		r += actuals[i];
-	*result = r;
-#	else
 	(void)arity;
 	*result = actuals[0] + actuals[1];
-#	endif
 	return 0;
 }
 
 int eei_operator_mul(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
 {
-#	if EEI_ALLOW_CHAIN_OP
-	ee_variable_type r = actuals[0];
-	for (int i = 1; i < arity; ++i)
-		r *= actuals[i];
-	*result = r;
-#	else
 	(void)arity;
 	*result = actuals[0] * actuals[1];
-#	endif
 	return 0;
 }
 
@@ -381,19 +364,13 @@ int eei_operator_bitinv(ee_element_count arity, const ee_variable_type * actuals
 }
 #endif
 
-#if EEI_ALLOW_CHAIN_OP
-enum { ChainArity = -3 };
-#else
-enum { ChainArity = 2 };
-#endif
-
 const ee_symboltable_function eei_operators_library[] =
 {
 #	if EEI_ALLOW_SIMPLE_MATH
 	{eei_operator_subneg,"-",1,ee_function_flag_prefix | ee_function_flag_operator | ee_function_flag_pure},
 	{eei_operator_subneg,"-",2,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
-	{eei_operator_plus,"+",ChainArity,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
-	{eei_operator_mul,"*",ChainArity,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
+	{eei_operator_plus,"+",2,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
+	{eei_operator_mul,"*",2,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
 	{eei_operator_div,"/",2,ee_function_flag_infix | ee_function_flag_operator | ee_function_flag_pure},
 #	endif
 
@@ -486,9 +463,14 @@ static const eei_rule_description eei_parser_infix_rules[] =
 #	endif
 
 #	if EEI_ALLOW_SELECT
-	//Select operator
-	ERROR(INFIX(TOKEN(eei_token_operator,'?'), eei_precedence_select)),
-	ERROR(INFIX(TOKEN(eei_token_operator,':'), eei_precedence_select_else)),
+	//The select operator must be followed by its second part before it can be folded.
+	//It is right-associative to correctly handle another select in the "true" clause.
+	ERROR(RIGHTINFIX(TOKEN(eei_token_operator,'?'), eei_precedence_select)),
+	//The second part is of higher precedence to make sure its folded first if another
+	// select operator follows in the "false" clause.
+	//It is left-assosiative to make sure any select operator appearing it its "true" clause
+	// is folded first.
+	CONDITIONAL(INFIX(TOKEN(eei_token_operator,':'), eei_precedence_select_else)),
 #	endif
 
 	//Sequence delimiter
@@ -644,25 +626,16 @@ static const eei_conditional_table_item eei_parser_group_rules[] =
 
 static const eei_conditional_table_item eei_parser_fold_rules[] =
 {
-#	if EEI_ALLOW_CHAIN_OP
-	{
-		INFIX_RULE(TOKEN(eei_token_operator,'+')),
-		INFIX_RULE(TOKEN(eei_token_operator,'+')),
-		COPY_RULE()
-	},
-	{
-		INFIX_RULE(TOKEN(eei_token_operator,'*')),
-		INFIX_RULE(TOKEN(eei_token_operator,'*')),
-		COPY_RULE()
-	},
-#	endif
-
 #	if EEI_ALLOW_SELECT
 	//Second half of a select operator
 	{
 		INFIX_RULE(TOKEN(eei_token_operator,':')),
 		INFIX_RULE(TOKEN(eei_token_operator,'?')),
-		HANDLE(TYPE_RULE(INFIX(TOKEN(eei_token_operator,'?'), eei_precedence_select), eei_rule_end),eei_rule_handle_infix)
+		//This replaces the original error handler with the correct one, when matched by the second part.
+		//The placeholder token is used to make sure that the first part is matched against only once.
+		//The precedence is set as-if for the second part to correctly fold the operator when it appears
+		// inside the "true" clause of an enclosing select operator.
+		HANDLE(INFIX(PLACEHOLDER_TOKEN(), eei_precedence_select_else), eei_rule_handle_infix)
 	},
 	#	endif
 

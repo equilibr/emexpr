@@ -27,7 +27,7 @@ enum
 	eei_precedence_assign,
 	eei_precedence_comma,
 	eei_precedence_select,
-	eei_precedence_select_else=eei_precedence_select,
+	eei_precedence_select_else,
 	eei_precedence_logical_or,
 	eei_precedence_logical_and,
 	eei_precedence_compare,
@@ -156,7 +156,8 @@ typedef enum
 	eei_token_internal_praser_group,
 	eei_token_internal_praser_end,
 	eei_token_internal_praser_delimit,
-	eei_token_internal_praser_copy
+	eei_token_internal_praser_copy,
+	eei_token_internal_praser_placeholder
 } eei_token_internals_parser;
 
 typedef enum
@@ -271,6 +272,9 @@ typedef enum
 	//Rule description in-group flag. Single bit.
 	eei_rule_bits_grouped_size = 1,
 
+	//Rule description conditional fold flag. Single bit.
+	eei_rule_bits_conditional_size = 1,
+
 	//Rule handler index. Must accomodate eei_rule_handler (without the sentinel).
 	eei_rule_bits_handler_size = 4,
 
@@ -332,8 +336,11 @@ typedef enum
 	//Offset for the in-group flag of a rule description
 	eei_rule_bits_grouped_offset =  eei_rule_bits_look_behind_offset + eei_rule_bits_look_behind_size,
 
+	//Offset for the conditional fold flag of a rule description
+	eei_rule_bits_conditional_offset =  eei_rule_bits_grouped_offset + eei_rule_bits_grouped_size,
+
 	//Offset for the handler part of a rule description
-	eei_rule_bits_handler_offset = eei_rule_bits_grouped_offset + eei_rule_bits_grouped_size,
+	eei_rule_bits_handler_offset = eei_rule_bits_conditional_offset + eei_rule_bits_conditional_size,
 
 	//Total size of a rule description, in bits
 	//The _check_type_sizes struct uses this to validate all parts fit in the data type used for the rule description
@@ -349,6 +356,7 @@ typedef enum
 #define END_TOKEN() TOKEN(eei_token_internal,eei_token_internal_praser_end)
 #define DELIMIT_TOKEN() TOKEN(eei_token_internal,eei_token_internal_praser_delimit)
 #define COPY_TOKEN() TOKEN(eei_token_internal,eei_token_internal_praser_copy)
+#define PLACEHOLDER_TOKEN() TOKEN(eei_token_internal,eei_token_internal_praser_placeholder)
 
 
 //Create a rule from its parts
@@ -424,6 +432,11 @@ typedef enum
 //The matching rule MUST appear in the group table
 #define GROUPED(rule_description) ((eei_rule_description)( (rule_description) |\
 	MAKE_PART_BITS(1, eei_rule_bits_grouped_offset, eei_rule_bits_grouped_size)))
+
+//A rule with a fold condition
+//The matching rule MUST appear in the fold table
+#define CONDITIONAL(rule_description) ((eei_rule_description)( (rule_description) |\
+	MAKE_PART_BITS(1, eei_rule_bits_conditional_offset, eei_rule_bits_conditional_size)))
 
 //A rule with a folding handle
 #define HANDLE(rule_description, handler) ((eei_rule_description)( (rule_description) |\
