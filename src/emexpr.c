@@ -586,7 +586,7 @@ static inline ee_parser_reply eei_parse_pushGroupRule(
 		eei_parser * parser,
 		const eei_parser_token * token)
 {
-	//Update the current group to the point the current stack top
+	//Update the current group to the current stack top
 	//	since that must be the rule that created this group
 	parser->currentGroup = parser->stack.top - 1;
 

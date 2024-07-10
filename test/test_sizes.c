@@ -94,6 +94,14 @@ static const ee_symboltable_variable varData[] =
 	{0,0}
 };
 
+static void test_print_name_only(const char * name)
+{
+	printf(
+				"---%-56s "
+				"\n",
+				name);
+}
+
 static void test_print_name(const char * name)
 {
 	printf(
@@ -232,71 +240,41 @@ void test_sizes()
 	var1 = 0;
 	var2 = 1;
 
-	test_print_name("Regular tests. results=1.");
+	test_print_name("a=0; b = 1;");
 	test_print_header();
 
+	test_print_name_only("Basic syntax. results=1.");
 	test_expression("!a");
-	test_expression("(0 + 2 + 3) * 4 / 20");
-	test_expression("1 - (-1--1)");
-	test_expression("(unity((1.01-0.1/10)))");
-
-	test_print_name("Optional rules/types. results=1.");
-	test_print_header();
-
-	test_expression("1+1 ? 2/2 : (0)");
-	test_expression("2 ? 3?1:4 : 5?6:7");
-	test_expression("0 ? 2?3:4 : 5?1:6");
-	test_expression("2M * (1/2)m");
-	test_expression("!^^(0,1,1)");
-	test_expression(">(15,2 + 3 * 4)");
-	test_expression("2 + 3 * 4 == 14");
+	test_expression("(a + 2 + 3) * 4 / 20");
+	test_expression("b - (-b--b)");
 	test_expression("(2 + 3) * 4 == 20");
 	test_expression("14 == 2 * (3 + 4)");
+	test_expression(">(15, 2 + 3 * 4)");
+	test_expression("2M * (1/2)m");
+	test_expression("(unity((1.01-0.1/10)))");
+	test_expression("!^^(0,1,1)");
 
-	test_print_name("Arity tests. results=arity.");
-	test_print_header();
+	test_print_name_only("Select operator. results=1.");
+	test_expression("1+1 ? 2/2 : (0)");
+	test_expression("(0?2:4 ? 6 : 8) == 6");
+	test_expression("(0 ? 2?4:6 : 8) == 8");
+	test_expression("(1 ? 2?4:6 : 8) == 4");
+
+	test_print_name_only("Arity tests. results=arity.");
 	test_expression("arity()");
 	test_expression("arity(a)");
 	test_expression("arity(((a)),((b)))");
 
-	test_print_name("Assignment tests. Compile to stored/empty.");
-	test_print_header();
-
-	//Mark empty expression during parsing!
+	test_print_name_only("Assignment tests. Compile to stored/empty.");
 	test_expression("");
 	test_expression("a = 1");
 	test_expression("a = pi() / pi - 1");
 
-	test_print_name("Error detection. Fail compilation.");
-	test_print_header();
-
-	//Unexpected delimiter
+	test_print_name_only("Syntax error. Fail compilation.");
 	test_expression("a = 1,a");
-
-	//Refuse assign to non-variable
-	test_expression("0 = 0");
-	test_expression("a+0 = 0");
-	test_expression("0+a = 0");
-	test_expression("a,a = 0");
-	test_expression("a = c");
-	test_expression("c = a");
-	test_expression("pi() = 0");
-	test_expression("pi = 0");
-
-	//Refuse wrong arity	
-	test_expression("-(1,0,1)");
-	test_expression("&&()");
+	test_expression("0?2");
+	test_expression("0?2:4:6");
 	test_expression("1+");
-	test_expression("2?1");
-	test_expression("2?1:0:4");
-
-	//Refuse no function
-	test_expression("&2");
-	test_expression("&(2)");
-	test_expression("2&3");
-	test_expression("+M");
-
-	//Refuse incorrect grammar	
 	test_expression("a =");
 	test_expression("()");
 	test_expression("(())");
@@ -307,6 +285,26 @@ void test_sizes()
 	test_expression(")1+");
 	test_expression("1+(");
 	test_expression("1+)");
+
+	test_print_name_only("Identifier error. Fail compilation.");
 	test_expression("novar");
 	test_expression("nofunc()");
+	test_expression("&2");
+	test_expression("&(2)");
+	test_expression("2&3");
+	test_expression("+M");
+
+	test_print_name_only("Arity mismatch. Fail compilation.");
+	test_expression("-(1,0,1)");
+	test_expression("&&()");
+
+	test_print_name_only("Assign to non-variable. Fail compilation.");
+	test_expression("0 = 0");
+	test_expression("a+0 = 0");
+	test_expression("0+a = 0");
+	test_expression("a,a = 0");
+	test_expression("a = c");
+	test_expression("c = a");
+	test_expression("pi() = 0");
+	test_expression("pi = 0");
 }
