@@ -190,7 +190,7 @@ int eei_operator_subneg(ee_element_count arity, const ee_variable_type * actuals
 			return 0;
 
 		default:
-			return 1;
+			return ee_evaluator_user_base;
 	}
 }
 
