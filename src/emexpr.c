@@ -510,7 +510,6 @@ typedef struct
 	ee_parser_rules rules;
 
 	const ee_char_type * expression;
-	ee_element_count expression_size;
 
 	eei_parser_token error_token;
 	ee_parser_reply status;
@@ -1271,7 +1270,7 @@ static void eei_parse_rule_error(eei_parser * parser, eei_parser_token * token)
 	{
 		error.token = GET_RULE_TOKEN(parser->stack.stack[parser->currentGroup].rule);
 		error.text.start = parser->stack.stack[parser->currentGroup].text.start;
-		error.text.end = parser->expression_size;
+		error.text.end = token->text.end;
 		eei_parse_error(parser, ee_parser_expression_unmatched_end, &error);
 		return;
 	}
@@ -1350,7 +1349,7 @@ static void eei_parse_init(eei_parser * parser)
 	parser->status = ee_parser_ok;
 	parser->error_token.token = SOF_TOKEN();
 	parser->error_token.text.start = 0;
-	parser->error_token.text.end = parser->expression_size;
+	parser->error_token.text.end = 0;
 
 	//Inject a SOF token into the parser
 	eei_parse_parsePrefix(parser, SOF_RULE(), 0, &parser->error_token);
@@ -1597,8 +1596,6 @@ ee_parser_reply ee_guestimate(const ee_char_type * expression, ee_data_size * si
 
 	} while (GET_TOKEN_TYPE(token) != eei_token_internal);
 
-	size->expression = state.head - expression;
-
 
 	//Guestimate the number of elements
 
@@ -1666,7 +1663,6 @@ ee_parser_reply ee_compile(
 	parser.rules = eei_parser_rules;
 
 	parser.expression = expression;
-	parser.expression_size = size->expression;
 
 	//---Parse the expression---
 	eei_parse_expression(&parser);

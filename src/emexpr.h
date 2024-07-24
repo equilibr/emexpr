@@ -357,7 +357,6 @@ typedef struct
 	//Counts of the various elements
 	//Used and updated by ee_compile
 
-	ee_element_count expression;
 	ee_element_count constants;
 	ee_element_count variables;
 	ee_element_count functions;
