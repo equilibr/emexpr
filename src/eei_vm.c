@@ -41,17 +41,17 @@ enum
 	eei_vm_immediate_shift = 0,
 
 	//Bits allocated to the instrictions
-	eei_vm_insturction_bits = 3,
+	eei_vm_instruction_bits = 3,
 
 	//Shift value for the instruction bits
-	eei_vm_insturction_shift = 8 - eei_vm_insturction_bits,
+	eei_vm_instruction_shift = 8 - eei_vm_instruction_bits,
 
 	//Bits allocated to the immediate
-	eei_vm_immediate_bits = eei_vm_insturction_shift,
+	eei_vm_immediate_bits = eei_vm_instruction_shift,
 
 
 	//Mask for the instruction
-	eei_vm_mask_instruction = ((1U << eei_vm_insturction_bits) - 1) << eei_vm_insturction_shift,
+	eei_vm_mask_instruction = ((1U << eei_vm_instruction_bits) - 1) << eei_vm_instruction_shift,
 
 	//Mask for the immediate values for each instruction
 	eei_vm_mask_immediate_shifted = ((1U << eei_vm_immediate_bits) - 1),
@@ -60,25 +60,25 @@ enum
 
 
 	//Add immediate to runtime accumulator
-	eei_vm_insturction_immediate = (0x00) << eei_vm_insturction_shift,
+	eei_vm_instruction_immediate = (0x00) << eei_vm_instruction_shift,
 
 	//Push a constant to the execution stack
-	eei_vm_insturction_constant = (0x01) << eei_vm_insturction_shift,
+	eei_vm_instruction_constant = (0x01) << eei_vm_instruction_shift,
 
 	//Read and push a variable to the execution stack
-	eei_vm_insturction_variable = (0x02) << eei_vm_insturction_shift,
+	eei_vm_instruction_variable = (0x02) << eei_vm_instruction_shift,
 
 	//Set the arity of the nearest function to execute
-	eei_vm_insturction_arity = (0x03) << eei_vm_insturction_shift,
+	eei_vm_instruction_arity = (0x03) << eei_vm_instruction_shift,
 
 	//Execute a function with an arity of 1 or 2
-	eei_vm_insturction_function2 = (0x04) << eei_vm_insturction_shift,
+	eei_vm_instruction_function2 = (0x04) << eei_vm_instruction_shift,
 
 	//Execute a function
-	eei_vm_insturction_function = (0x05) << eei_vm_insturction_shift,
+	eei_vm_instruction_function = (0x05) << eei_vm_instruction_shift,
 
 	//Pop a variable from the stack and store it
-	eei_vm_insturction_store = (0x06) << eei_vm_insturction_shift,
+	eei_vm_instruction_store = (0x06) << eei_vm_instruction_shift,
 };
 
 
@@ -110,7 +110,7 @@ ee_parser_reply eei_vmmake_append_instruction(
 		vm->data.instructions[vm->current.instructions++] =
 				(((immediate >> (eei_vm_immediate_bits * i)) & eei_vm_mask_immediate_shifted)
 				<< eei_vm_immediate_shift)
-				| eei_vm_insturction_immediate;
+				| eei_vm_instruction_immediate;
 
 		i--;
 	}
@@ -156,7 +156,7 @@ ee_parser_reply eei_vmmake_load_constant(
 	if (vm->max.stack < vm->current.stack)
 		vm->max.stack = vm->current.stack;
 
-	return eei_vmmake_append_instruction(vm, eei_vm_insturction_constant, index);
+	return eei_vmmake_append_instruction(vm, eei_vm_instruction_constant, index);
 }
 
 ee_parser_reply eei_vmmake_load_variable(
@@ -192,7 +192,7 @@ ee_parser_reply eei_vmmake_load_variable(
 	if (vm->max.stack < vm->current.stack)
 		vm->max.stack = vm->current.stack;
 
-	return eei_vmmake_append_instruction(vm, eei_vm_insturction_variable, index);
+	return eei_vmmake_append_instruction(vm, eei_vm_instruction_variable, index);
 }
 
 ee_parser_reply eei_vmmake_execute_functions(
@@ -235,25 +235,25 @@ ee_parser_reply eei_vmmake_execute_functions(
 
 	if (
 		((arity == 1) || (arity == 2))
-		&& (index <= (((1 << (eei_vm_insturction_bits-1)) - 1))) )
+		&& (index <= (((1 << (eei_vm_instruction_bits-1)) - 1))) )
 	{
 		//Use the special command
 		return eei_vmmake_append_instruction(
 					vm,
-					eei_vm_insturction_function2,
+					eei_vm_instruction_function2,
 					index | ( (arity == 1) ? 0 : (1 << (eei_vm_immediate_bits - 1)) ));
 	}
 
 	if (arity != 0)
 	{
 		const ee_parser_reply reply =
-				eei_vmmake_append_instruction(vm, eei_vm_insturction_arity, arity);
+				eei_vmmake_append_instruction(vm, eei_vm_instruction_arity, arity);
 
 		if (reply != ee_parser_ok)
 			return reply;
 	}
 
-	return eei_vmmake_append_instruction(vm, eei_vm_insturction_function, index);
+	return eei_vmmake_append_instruction(vm, eei_vm_instruction_function, index);
 }
 
 ee_parser_reply eei_vmmake_store_variable(
@@ -291,7 +291,7 @@ ee_parser_reply eei_vmmake_store_variable(
 	//Update stack usage
 	vm->current.stack--;
 
-	return eei_vmmake_append_instruction(vm, eei_vm_insturction_store, index);
+	return eei_vmmake_append_instruction(vm, eei_vm_instruction_store, index);
 }
 
 
@@ -345,12 +345,12 @@ ee_evaluator_reply eei_vm_execute(const eei_vm_environment * vm_environment)
 		//Decode and advance the current instruction
 		switch ((*rt.instruction++) & eei_vm_mask_instruction)
 		{
-			case eei_vm_insturction_immediate:
+			case eei_vm_instruction_immediate:
 				//Do nothing
 				//This allows using this instruction to accumulate any value
 				break;
 
-			case eei_vm_insturction_constant:
+			case eei_vm_instruction_constant:
 				//The constant table holds the values directly so just
 				//	copy the one at the requested index.
 				*rt.stack_top++ =
@@ -360,7 +360,7 @@ ee_evaluator_reply eei_vm_execute(const eei_vm_environment * vm_environment)
 				rt.accumulator = 0;
 				break;
 
-			case eei_vm_insturction_variable:
+			case eei_vm_instruction_variable:
 				//Use a user-modifiable load.
 				//At this point the destination holds garbage and can be safely ignored.
 				//The variables table holds pointers to the variables
@@ -372,14 +372,14 @@ ee_evaluator_reply eei_vm_execute(const eei_vm_environment * vm_environment)
 				rt.accumulator = 0;
 				break;
 
-			case eei_vm_insturction_arity:
+			case eei_vm_instruction_arity:
 				//Set the arity for the next function to execute
 				rt.arity = rt.accumulator;
 
 				//Test if we can go directly to the "function" case since
 				//	this is the expected sequence when the function table is small.
 				//The instruction was already advanced in the switch header
-				if (((*rt.instruction) & eei_vm_mask_instruction) != eei_vm_insturction_function)
+				if (((*rt.instruction) & eei_vm_mask_instruction) != eei_vm_instruction_function)
 				{
 					//Clear the accumulator in preparation for the next instruction
 					rt.accumulator = 0;
@@ -393,7 +393,7 @@ ee_evaluator_reply eei_vm_execute(const eei_vm_environment * vm_environment)
 
 				//fall through
 
-			case eei_vm_insturction_function2:
+			case eei_vm_instruction_function2:
 				if (rt.arity == 0)
 				{
 					//Only execute this if we did not come directly from the case above
@@ -410,7 +410,7 @@ ee_evaluator_reply eei_vm_execute(const eei_vm_environment * vm_environment)
 
 				//fall through
 
-			case eei_vm_insturction_function:
+			case eei_vm_instruction_function:
 			{
 				int error;
 				ee_variable_type function_result;
@@ -448,7 +448,7 @@ ee_evaluator_reply eei_vm_execute(const eei_vm_environment * vm_environment)
 				break;
 			}
 
-			case eei_vm_insturction_store:
+			case eei_vm_instruction_store:
 				//Use a user-modifiable store.
 				//After the store the source is popped of the stack and no longer used.
 				//The variables table holds pointers to the variables

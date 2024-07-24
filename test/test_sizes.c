@@ -240,7 +240,7 @@ void test_sizes()
 	var1 = 0;
 	var2 = 1;
 
-	test_print_name("a=0; b = 1;");
+	test_print_name("a=0; b=1;");
 	test_print_header();
 
 	test_print_name_only("Basic syntax. results=1.");

@@ -63,11 +63,15 @@ typedef const ee_char_type * (*ee_constant_scanner)(const ee_char_type * start);
 //On failure it should return non-zero, the result will be ignored
 typedef int (*ee_constant_parser)(const ee_char_type * start, const ee_char_type * end, ee_variable_type * result);
 
-//A user defined function
-//The arity is the number of parameters passed to the function.
+//A user defined function.
+//Functions of this type are used to provide implementations for all implemented functions and operators.
+//The arity is the number of parameters passed to the function, as parsed from the expression.
 //The actuals is an array of the parameters themselves, in order.
-//The result should be written by this function, if it returns any value.
-//A non-zero value should be returned if any error was encountered during execution.
+//The result must be written by this function on success.
+//A zero value should be returned on success.
+//A negative value should be returned if any error was encountered during execution.
+//The value ee_evaluator_user_base from the ee_evaluator_reply enumeration shold be used as base, if possible.
+//In case of an error the result will be ignored and the execution would halt, floating the returned value up to the caller.
 //It is posible to use the same function under different names and arities.
 typedef int (*ee_function)(ee_element_count arity, const ee_variable_type * actuals, ee_variable_type * result);
 
@@ -297,6 +301,10 @@ typedef enum
 //Status returned by the evaluator
 typedef enum
 {
+	//User defined functions (ee_function) should return
+	// this value, or *smaller*, in case of an internal error.
+	ee_evaluator_user_base = -1,
+
 	//All is well
 	ee_evaluator_ok = 0,
 
