@@ -1,7 +1,7 @@
 /*
  * EMEXPR - Expression evaluator for embedded systems
  *
- * Copyright (c) 2022 Sergey Tomilin
+ * Copyright (c) 2022-2024 Sergey Tomilin
  * Under the MIT License
  * For full license text see attached "LICENSE" file
 */
