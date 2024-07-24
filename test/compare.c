@@ -56,7 +56,7 @@ static long double measure_evaluation(
 		const char * expression)
 {
 	//Globally allocated data pools
-	enum { pool_bytes = 1024 };
+	enum { pool_bytes = 10240 };
 
 	static union
 	{
@@ -112,7 +112,7 @@ static long double measure_compilation(
 		const char * expression)
 {
 	//Globally allocated data pools
-	enum { pool_bytes = 1024 };
+	enum { pool_bytes = 10240 };
 
 	static union
 	{
