@@ -472,7 +472,7 @@ typedef enum
 #define SOF_RULE() DELIMITED(PREFIX(SOF_TOKEN()))
 
 //A special rule that marks parsing groups
-#define GROUP_RULE() INFIX(GROUP_TOKEN(),eei_precedence_group)
+#define GROUP_RULE() ERROR(INFIX(GROUP_TOKEN(),eei_precedence_group))
 
 
 #endif // EEI_RULES_H

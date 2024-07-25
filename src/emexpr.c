@@ -1194,8 +1194,16 @@ static void eei_parse_foldEndDilimiter(
 	//Special handling for the SOF token to avoid many check in the following code.
 	if (parser->stack.top == 2)
 	{
-		//This code is reached when a EOF token was encountered that correctly matched the
+		//This code should only be reached when a EOF token was encountered that correctly matched the
 		// SOF delimited rule that exists at the very bottom of the stack.
+		if (
+			(parser->stack.stack[0].rule != SOF_RULE()) ||
+			(GET_RULE_TOKEN(parser->stack.stack[1].rule) != EOF_TOKEN()))
+		{
+			eei_parse_error(parser, ee_parser_error, token);
+			return;
+		}
+
 		//The current group is now a lie but we can stil fold this rule, thus completely clearing the stack.
 		parser->currentGroup = 0;
 		eei_parse_done(parser);
