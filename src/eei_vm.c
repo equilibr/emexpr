@@ -165,6 +165,10 @@ ee_parser_reply eei_vmmake_load_variable(
 {
 	//Add a variable load bytecode
 
+	//Sanity check for non-NULL pointer
+	if (!variable)
+		return ee_parser_binding;
+
 	//Linear search through the variables table for a match
 	//We trade speed during parsing for lower memory usage of the final environment
 	int index;
@@ -201,6 +205,10 @@ ee_parser_reply eei_vmmake_execute_functions(
 		int arity)
 {
 	//Add a function execute bytecode
+
+	//Sanity check for non-NULL pointer
+	if (!function)
+		return ee_parser_binding;
 
 	//Linear search through the functions table for a match
 	//We trade speed during parsing for lower memory usage of the final environment
@@ -261,6 +269,10 @@ ee_parser_reply eei_vmmake_store_variable(
 		ee_variable_type * variable)
 {
 	//Add a variable store bytecode
+
+	//Sanity check for non-NULL pointer
+	if (!variable)
+		return ee_parser_binding;
 
 	//Make sure there is something on the stack
 	if (vm->current.stack == 0)
