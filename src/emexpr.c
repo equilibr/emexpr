@@ -154,7 +154,7 @@ static inline void eei_lexer_consume_identifier(eei_lexer_state * state)
 			 );
 }
 
-eei_token eei_lexer_next_token(eei_lexer_state * state)
+static eei_token eei_lexer_next_token(eei_lexer_state * state)
 {
 	//Parse the input stream for the next token
 
@@ -595,92 +595,77 @@ static inline ee_parser_reply eei_parse_pushGroupRule(
 //Parser symbol table helper functions
 //------------------------------------
 
-static inline ee_variable_type * eei_parse_symbols_get_variable_from_index(
-		const eei_parser * parser,
-		const eei_symboltable_index * index)
+static ee_symboltable_reply eei_symboltable_get_variable(
+		const eei_symboltable * symboltable,
+		const ee_char_type * start,
+		const ee_element_count length,
+		ee_variable_type ** result)
 {
-	if (index->third >= 0)
-		return parser->symboltable.third.locations[index->third].variable;
-	else
-		return NULL;
-}
-
-static inline ee_function eei_parse_symbols_get_function_from_index(
-		const eei_parser * parser,
-		const eei_symboltable_index * index)
-{
-	if (index->third >= 0)
-		return parser->symboltable.third.locations[index->third].function;
-	else
-		return NULL;
-}
-
-static ee_variable_type * eei_parse_symbols_get_variable(
-		eei_parser * parser,
-		const eei_parser_node * node)
-{
-	//Returns the variable pointed to by the node, or NULL on error.
-
-	const ee_char_type * token_start = &parser->expression[node->text.start];
-	const ee_element_count token_length = node->text.end - node->text.start;
-
 	eei_symboltable_index index;
 
-	eei_symboltable_find_text(
-				&parser->symboltable,
-				token_start,
-				token_length,
+	ee_symboltable_reply reply =
+			eei_symboltable_find_text(
+				symboltable,
+				start,
+				length,
 				&index);
 
-	eei_symboltable_get(&parser->symboltable, &index,0,0,0,~ee_function_flag_invalid);
-	return eei_parse_symbols_get_variable_from_index(parser, &index);
-}
+	if (reply != ee_symboltable_ok)
+		return reply;
 
-static ee_function eei_parse_symbols_get_function(
-		eei_parser * parser,
-		const eei_parser_node * node,
-		ee_arity arity,
-		ee_function_flags any_flags,
-		ee_function_flags all_flags,
-		ee_function_flags not_flags,
-		int * wrong_arity)
-{
-	//Returns the function pointed to by the node, or NULL on error.
-
-	const ee_char_type * token_start = &parser->expression[node->text.start];
-	const ee_element_count token_length = node->text.end - node->text.start;
-
-	eei_symboltable_index index;
-
-	eei_symboltable_find_text(
-				&parser->symboltable,
-				token_start,
-				token_length,
-				&index);
-
-	const ee_symboltable_reply reply =
+	reply =
 			eei_symboltable_get(
-				&parser->symboltable,
+				symboltable,
+				&index,
+				0,
+				0,
+				0,
+				~ee_function_flag_invalid);
+
+	if (reply != ee_symboltable_ok)
+		return reply;
+
+	*result = symboltable->third.locations[index.third].variable;
+	return ee_symboltable_ok;
+}
+
+static ee_symboltable_reply eei_symboltable_get_function(
+		const eei_symboltable * symboltable,
+		const ee_char_type * start,
+		const ee_element_count length,
+		const ee_arity arity,
+		const ee_function_flags any_flags,
+		const ee_function_flags all_flags,
+		const ee_function_flags not_flags,
+		ee_function * result)
+{
+	eei_symboltable_index index;
+
+	ee_symboltable_reply reply =
+			eei_symboltable_find_text(
+				symboltable,
+				start,
+				length,
+				&index);
+
+	if (reply != ee_symboltable_ok)
+		return reply;
+
+	reply =
+			eei_symboltable_get(
+				symboltable,
 				&index,
 				arity,
 				any_flags,
 				all_flags,
 				not_flags);
 
-	if (reply == ee_symboltable_ok)
-	{
-		if (wrong_arity)
-			*wrong_arity = 0;
+	if (reply != ee_symboltable_ok)
+		return reply;
 
-		return eei_parse_symbols_get_function_from_index(parser, &index);
-	}
-
-	if (wrong_arity)
-		*wrong_arity = reply == ee_symboltable_filtered;
-
-	return NULL;
+	*result = symboltable->third.locations[index.third].function;
+	return ee_symboltable_ok;
 }
-
 
 //Parser handler functions
 //------------------------
@@ -713,43 +698,35 @@ static ee_parser_reply eei_rule_handler_variable(eei_parser * parser, const eei_
 	const ee_char_type * token_start = &parser->expression[node->text.start];
 	const ee_element_count token_length = node->text.end - node->text.start;
 
-	eei_symboltable_index index;
-
-	eei_symboltable_find_text(
+	ee_variable_type * var;
+	const ee_symboltable_reply reply_var =
+			eei_symboltable_get_variable(
 				&parser->symboltable,
 				token_start,
 				token_length,
-				&index);
+				&var);
 
-	//Look for the variable
-	eei_symboltable_get(
+	ee_function op;
+	const ee_symboltable_reply reply_op =
+			eei_symboltable_get_function(
 				&parser->symboltable,
-				&index,
-				0,
-				0,
-				0,
-				~ee_function_flag_invalid);
-	ee_variable_type * var = eei_parse_symbols_get_variable_from_index(parser, &index);
-
-	//Look for a zero-arity function with the same name
-	eei_symboltable_get(
-				&parser->symboltable,
-				&index,
+				token_start,
+				token_length,
 				0,
 				0,
 				ee_function_flag_prefix,
-				0);
-	ee_function op = eei_parse_symbols_get_function_from_index(parser, &index);
+				0,
+				&op);
 
-	if (var && op)
+	if ((reply_var == ee_symboltable_ok) && (reply_op == ee_symboltable_ok))
 		//Do not allow both to be defined to avoid confusion
 		return ee_parser_varfunction_duplicate;
 
-	if (!var && !op)
+	if ((reply_var != ee_symboltable_ok) && (reply_op != ee_symboltable_ok))
 		//None found - assume this should have been a variable
 		return ee_parser_unknown_variable;
 
-	if (var)
+	if (reply_var == ee_symboltable_ok)
 		return eei_vmmake_load_variable(&parser->vm, var);
 	else
 		return eei_vmmake_execute_functions(&parser->vm, op, 0);
@@ -806,23 +783,24 @@ static inline ee_parser_reply eei_rule_handler_operator(
 		ee_parser_reply error
 		)
 {
-	int wrong_arity = 0;
-	const ee_function op =
-			eei_parse_symbols_get_function(
-				parser,
-				node,
+	ee_function op;
+	const ee_symboltable_reply reply =
+			eei_symboltable_get_function(
+				&parser->symboltable,
+				&parser->expression[node->text.start],
+				node->text.end - node->text.start,
 				arity,
 				((GET_RULE_TOKEN_TYPE(node->rule) == eei_token_operator) ? ee_function_flag_operator : 0),
 				flag,
 				0,
-				&wrong_arity);
+				&op);
 
-	if (!op)
+	if (reply != ee_symboltable_ok)
 	{
 		const eei_parser_token token = {GET_RULE_TOKEN(node->rule), node->text};
 		return eei_parse_error(
 					parser,
-					wrong_arity
+					(reply == ee_symboltable_filtered)
 					? ee_parser_function_wrong_arity
 					: error,
 					&token);
@@ -893,27 +871,28 @@ static ee_parser_reply eei_rule_handler_function(eei_parser * parser, const eei_
 	//The arity is the amount of elements in the parameter group of the function
 	const ee_arity arity = (ee_arity)(node->elements);
 
-	int wrong_arity = 0;
-	ee_function op =
-			eei_parse_symbols_get_function(
-				parser,
-				&identifier,
+	ee_function func;
+	const ee_symboltable_reply reply_func =
+			eei_symboltable_get_function(
+				&parser->symboltable,
+				&parser->expression[identifier.text.start],
+				identifier.text.end - identifier.text.start,
 				arity,
 				ee_function_flag_infix,
 				((GET_RULE_TOKEN_TYPE(identifier.rule) == eei_token_operator) ? ee_function_flag_operator : 0),
 				0,
-				&wrong_arity);
+				&func);
 
 	//In case of an error make sure we report exactly what happened
-	if (!op)
+	if (reply_func != ee_symboltable_ok)
 		return eei_parse_error(
 					parser,
-					wrong_arity
+					(reply_func == ee_symboltable_filtered)
 					? ee_parser_function_wrong_arity
 					: ee_parser_function_not_implemented,
 					&error);
 
-	return eei_vmmake_execute_functions(&parser->vm, op, arity);
+	return eei_vmmake_execute_functions(&parser->vm, func, arity);
 }
 
 static ee_parser_reply eei_rule_handler_assign(eei_parser * parser, const eei_parser_node * node)
@@ -942,10 +921,16 @@ static ee_parser_reply eei_rule_handler_assign(eei_parser * parser, const eei_pa
 					&error);
 
 	//Get the actual variable
-	ee_variable_type * var = eei_parse_symbols_get_variable(parser, &identifier);
+	ee_variable_type * var;
+	const ee_symboltable_reply reply_var =
+			eei_symboltable_get_variable(
+				&parser->symboltable,
+				&parser->expression[identifier.text.start],
+				identifier.text.end - identifier.text.start,
+				&var);
 
 	//In case of an error make sure we report what happened
-	if (!var)
+	if (reply_var != ee_symboltable_ok)
 	{
 		//Now that the identifier is available change the possible error to that
 		error.token = GET_RULE_TOKEN(identifier.rule);
