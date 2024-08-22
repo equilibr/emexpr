@@ -37,6 +37,9 @@ typedef unsigned char ee_element_count;
 //The type used for counting function parameters
 typedef signed char ee_arity;
 
+//Type used to hold a single VM bytecode
+typedef unsigned char ee_vm_bytecode;
+
 
 //API types
 //---------

@@ -11,10 +11,6 @@
 
 #include "emexpr.h"
 
-//Type used to hold a single VM bytecode
-typedef unsigned char eei_vm_bytecode;
-
-
 //Virtual machine building
 //------------------------
 
@@ -23,7 +19,7 @@ typedef struct
 	ee_variable_type * constants;
 	ee_variable_type ** variables;
 	ee_function * functions;
-	eei_vm_bytecode * instructions;
+	ee_vm_bytecode * instructions;
 } eei_vmmake_data;
 
 typedef struct
@@ -85,7 +81,7 @@ typedef struct
 	const ee_function * functions;
 
 	//Start of the VM bytecode stream
-	const eei_vm_bytecode * instructions;
+	const ee_vm_bytecode * instructions;
 
 	//Pointer to the runtime stack
 	ee_variable_type * stack;

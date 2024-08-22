@@ -87,7 +87,7 @@ enum
 
 ee_parser_reply eei_vmmake_append_instruction(
 		eei_vmmake_environment * vm,
-		eei_vm_bytecode instruction,
+		ee_vm_bytecode instruction,
 		unsigned int immediate)
 {
 	//Insert an instruction with an immediate
@@ -324,10 +324,10 @@ typedef struct
 	ee_variable_type * stack_top;
 
 	//The VM bytecode to execute next
-	const eei_vm_bytecode * instruction;
+	const ee_vm_bytecode * instruction;
 
 	//One-past the last instruction to execute
-	const eei_vm_bytecode * instruction_end;
+	const ee_vm_bytecode * instruction_end;
 } eei_vm_runtime;
 
 //Exeucute the VM environment

@@ -1431,7 +1431,7 @@ void eei_guestimate_calculate_sizes(ee_data_size * size)
 			+ alignof(ee_variable_type) + sizeof(ee_variable_type) * size->constants
 			+ alignof(ee_variable_type) + sizeof(ee_variable_type) * size->variables
 			+ alignof(ee_function) + sizeof(ee_function) * size->functions
-			+ alignof(eei_vm_bytecode) + sizeof(eei_vm_bytecode) * size->instructions);
+			+ alignof(ee_vm_bytecode) + sizeof(ee_vm_bytecode) * size->instructions);
 
 	size->stack_size = (ee_memory_size)(
 			sizeof(ee_variable_type) * size->runtime_stack);
@@ -1476,11 +1476,11 @@ char * eei_environment_calculate_offsets(
 	ptr += sizeof(ee_function) * size->functions;
 
 	//Instructions
-	while ((ptrdiff_t)ptr % alignof(eei_vm_bytecode))
+	while ((ptrdiff_t)ptr % alignof(ee_vm_bytecode))
 		ptr++;
 
 	offsets->instructions = (ee_memory_size)(ptr - base);
-	ptr += sizeof(eei_vm_bytecode) * size->instructions;
+	ptr += sizeof(ee_vm_bytecode) * size->instructions;
 
 	//Runtime stack
 	while ((ptrdiff_t)ptr % alignof(ee_variable_type))
@@ -1500,7 +1500,7 @@ char * eei_environment_calculate_pointers(
 	pointers->constants = (ee_variable_type*)(base + offsets->constants);
 	pointers->variables = (ee_variable_type**)(base + offsets->variables);
 	pointers->functions = (ee_function*)(base + offsets->functions);
-	pointers->instructions = (eei_vm_bytecode*)(base + offsets->instructions);
+	pointers->instructions = (ee_vm_bytecode*)(base + offsets->instructions);
 
 	return 	base + offsets->stack;
 }
@@ -1742,7 +1742,7 @@ ee_evaluator_reply ee_evaluate(ee_environment environment, ee_variable result)
 		return ee_evaluator_ok;
 	}
 
-	ee_evaluator_reply reply = eei_vm_execute(&vm_environment);
+	const ee_evaluator_reply reply = eei_vm_execute(&vm_environment);
 
 	//Extract the top of the stack and return it as the result
 	if (result)
