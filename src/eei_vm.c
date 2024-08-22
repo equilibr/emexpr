@@ -440,7 +440,8 @@ ee_evaluator_reply eei_vm_execute(const eei_vm_environment * vm_environment)
 						(
 							rt.arity,
 							rt.stack_top,
-							&function_result);
+							&function_result
+						);
 
 				//Push the result to the stack top
 				*rt.stack_top++ = function_result;

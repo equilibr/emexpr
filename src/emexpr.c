@@ -1538,6 +1538,35 @@ void eei_environment_compact(
 //External API
 //------------
 
+ee_parser_reply ee_estimate(ee_memory_size length, ee_data_size * size)
+{
+	//Assume any character can be any element, at the same time!
+	//This will grossly over-estimate the needed size but will make
+	// sure the allocated memory would be enough to parse and evaluate
+	// and expression of the given length.
+
+	//The below items always must be separated by, at least, one other symbol.
+	//Thus no more than half the expression can consist of any of them.
+	size->constants = length / 2 + 1;
+	size->variables = length / 2 + 1;
+	size->functions = length / 2 + 1;
+
+	//Worst case:
+	// An expression consisting of single character group start delimiters.
+	size->compilation_stack = 4 + length * 2;
+
+	//Worst case:
+	// An expression consisting of single character operators, each using an extra immediate.
+	size->instructions = length * 2;
+
+	//Worst case:
+	// A complete RPN expression.
+	size->runtime_stack = length;
+
+	eei_guestimate_calculate_sizes(size);
+
+	return ee_parser_ok;
+}
 
 ee_parser_reply ee_guestimate(const ee_char_type * expression, ee_data_size * size)
 {

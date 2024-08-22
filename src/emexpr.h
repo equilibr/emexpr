@@ -415,8 +415,13 @@ ee_symboltable_reply ee_symboltable_add(
 		const ee_symboltable_functions functions,
 		const ee_symboltable_variables variables);
 
+//Estimate the upper bound of needed memory, in bytes, based on the expression length.
+//The calculated memory will accomodate any expression of the given length.
+ee_parser_reply ee_estimate(
+		ee_memory_size length,
+		ee_data_size * size);
 
-//Anayze the expression and estimate the upper bound of needed memory, in bytes.
+//Anayze the expression and guestimate the upper bound of needed memory, in bytes.
 ee_parser_reply ee_guestimate(
 		const ee_char_type * expression,
 		ee_data_size * size);
