@@ -37,6 +37,8 @@
 //The VM instruction is decoded using the following definitions.
 enum
 {
+	eei_vm_bytecode_bits = sizeof(ee_vm_bytecode) * __CHAR_BIT__,
+
 	//Shift value for the immediate bits
 	eei_vm_immediate_shift = 0,
 
@@ -44,7 +46,7 @@ enum
 	eei_vm_instruction_bits = 3,
 
 	//Shift value for the instruction bits
-	eei_vm_instruction_shift = 8 - eei_vm_instruction_bits,
+	eei_vm_instruction_shift = eei_vm_bytecode_bits - eei_vm_instruction_bits,
 
 	//Bits allocated to the immediate
 	eei_vm_immediate_bits = eei_vm_instruction_shift,

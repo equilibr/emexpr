@@ -414,14 +414,16 @@ typedef struct
 	ee_memory_size size;
 } ee_compilation;
 
-//Semi-transparent header of the environment
+//Evaluation data
 typedef struct
 {
-	int flags;
-} ee_environment_header;
+	//Data buffer
+	void * data;
 
-//Typedef to simply the interface
-typedef ee_environment_header * ee_environment;
+	//Size of the data buffer
+	ee_memory_size size;
+} ee_evaluation;
+
 
 //Add
 //	all the functions from the vector of functions and
@@ -461,10 +463,10 @@ ee_parser_reply ee_compile(
 		const ee_symboltable_header * symboltable,
 		const ee_compilation * compilation,
 		ee_location * error,
-		ee_environment environment);
+		ee_evaluation * evaluation);
 
 //Evaluate the compiled environment
-ee_evaluator_reply ee_evaluate(ee_environment environment, ee_variable result);
+ee_evaluator_reply ee_evaluate(const ee_evaluation * evaluation, ee_variable_type * result);
 
 #ifdef __cplusplus
 }

@@ -87,7 +87,7 @@ typedef struct
 	ee_variable_type * stack;
 
 	//Count of instructions to execute
-	int instruction_count;
+	ee_element_count instruction_count;
 } eei_vm_environment;
 
 

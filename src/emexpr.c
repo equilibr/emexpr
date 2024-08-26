@@ -1384,7 +1384,7 @@ static void eei_parse_expression(eei_parser * parser)
 //Internal direct data held inside a compilation data structure
 typedef struct
 {
-	char data[1];
+	eei_parser_node stack[1];
 } eei_compilation_struct;
 
 typedef struct
@@ -1400,7 +1400,8 @@ typedef struct
 //Internal direct data held inside an execution environment
 typedef struct
 {
-	ee_environment_header header;
+	//Pointers to data for avoiding re-calculation on each execution
+	eei_vm_environment environment;
 
 	//Byte offsets from "data" for the various tables
 	eei_environment_offsets offsets;
@@ -1417,6 +1418,14 @@ typedef struct
 
 //Helper macro to calculate alignment of a type
 #define alignof(type) ((ptrdiff_t)&((struct { char c; type d; } *)0)->d)
+
+//Helper macro to calculate misalignment of a pointer to a type
+#define ptr_misalign(type, ptr) ((alignof(type) - ((ptrdiff_t)(ptr) % alignof(type))) % alignof(type))
+
+//Helper macro to calculate an aligned pointer
+#define aligned_ptr(type, ptr) ((type *)((char *)(ptr) + ptr_misalign(type, ptr) ))
+#define aligned_const_ptr(type, ptr) ((type *)((const char *)(ptr) + ptr_misalign(type, ptr) ))
+
 
 void eei_guestimate_calculate_sizes(ee_data_size * size)
 {
@@ -1637,29 +1646,26 @@ ee_parser_reply ee_compile(
 		const ee_symboltable_header * symboltable,
 		const ee_compilation * compilation,
 		ee_location * error,
-		ee_environment environment)
+		ee_evaluation * evaluation)
 {
-	eei_parser parser;
-
-	//Setup the parser memory
-
-	eei_environment_struct * full_env = (eei_environment_struct *)environment;
-	eei_compilation_struct * full_compilation = (eei_compilation_struct *)compilation->data;
+	//Calculate the correctly aligned pointers
 	eei_symboltable_struct * full_symboltable = (eei_symboltable_struct *)symboltable;
+	eei_compilation_struct * full_compilation = aligned_ptr(eei_compilation_struct, compilation->data);
+	eei_environment_struct * full_env = aligned_ptr(eei_environment_struct, evaluation->data);
 
-	//Calculate the correctly aligned pointer
-	char * ptr = &full_compilation->data[0];
-	const ptrdiff_t misalign = (ptrdiff_t)ptr % alignof(eei_parser_node);
-
-	//Calculate how much (aligned) stack elements the data buffer can actually hold
+	//Calculate how much (aligned) stack elements the compilation data buffer can actually hold.
+	const ptrdiff_t misalign = (const char*)full_compilation - (const char*)compilation->data;
 	const int stack_elements = (compilation->size - misalign) / sizeof(eei_parser_node);
 
-	//Make sure the data buffer is big enough to hold the expected stack
-	//Note that this would still work if the expected stack size is not calculated (zero)
+	//Make sure the data buffer is big enough to hold the expected stack.
+	//Note that this would still work if the expected stack size is not calculated (zero).
 	if (stack_elements < size->compilation_stack)
 		return ee_parser_memory;
 
-	parser.stack.stack = (eei_parser_node*)(ptr + misalign);
+	//Setup the parser
+	eei_parser parser;
+
+	parser.stack.stack = full_compilation->stack;
 	parser.stack.size = stack_elements;
 	parser.stack.top = 0;
 	parser.stack.high = 0;
@@ -1743,30 +1749,13 @@ ee_parser_reply ee_compile(
 	return parser.status;
 }
 
-ee_evaluator_reply ee_evaluate(ee_environment environment, ee_variable result)
+ee_evaluator_reply ee_evaluate(const ee_evaluation * evaluation, ee_variable_type * result)
 {
-	eei_vm_environment vm_environment;
+	//Calculate the correctly aligned evaluation data pointer
+	const eei_vm_environment * environment =
+			&aligned_const_ptr(const eei_environment_struct, evaluation->data)->environment;
 
-	//Fill the VM environment
-	{
-		eei_environment_struct * full_env = (eei_environment_struct *)environment;
-		eei_vmmake_data pointers;
-
-		//Setup the VM tables memory
-		char * ptr = eei_environment_calculate_pointers(
-				&pointers,
-				&full_env->offsets,
-				(char *)&full_env->data[0]);
-
-		vm_environment.constants = pointers.constants;
-		vm_environment.variables = pointers.variables;
-		vm_environment.functions = pointers.functions;
-		vm_environment.instructions = pointers.instructions;
-		vm_environment.stack = (ee_variable_type*)ptr;
-		vm_environment.instruction_count = full_env->instruction_count;
-	}
-
-	if (vm_environment.instruction_count == 0)
+	if (environment->instruction_count == 0)
 	{
 		//This is an empty expression that can not return any result
 
@@ -1778,7 +1767,11 @@ ee_evaluator_reply ee_evaluate(ee_environment environment, ee_variable result)
 		return ee_evaluator_ok;
 	}
 
-	const ee_evaluator_reply reply = eei_vm_execute(&vm_environment);
+	const ee_evaluator_reply reply = eei_vm_execute(environment);
+
+	//Handle user-generated errors
+	if (reply <= ee_evaluator_user_base)
+		return reply;
 
 	//Extract the top of the stack and return it as the result
 	if (result)
@@ -1787,7 +1780,7 @@ ee_evaluator_reply ee_evaluate(ee_environment environment, ee_variable result)
 		if (reply == ee_evaluator_empty)
 			return ee_evaluator_stack_underflow;
 
-		*result = *vm_environment.stack;
+		*result = *environment->stack;
 	}
 	else if (reply == ee_evaluator_ok)
 		return ee_evaluator_stack_extra;
