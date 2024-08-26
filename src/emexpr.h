@@ -25,6 +25,9 @@ typedef double ee_variable_type;
 //User modifiable API types
 //-------------------------
 
+//These are the types used by the EmExpr API functions.
+//They can be changed by the user, if needed, to tweak performance and resource usage.
+
 //The underlying type of an expression character
 typedef char ee_char_type;
 
@@ -37,15 +40,28 @@ typedef unsigned char ee_element_count;
 //The type used for counting function parameters
 typedef signed char ee_arity;
 
+//Type used for holding function flags
+typedef unsigned char ee_function_flags;
+
 //Type used to hold a single VM bytecode
 typedef unsigned char ee_vm_bytecode;
 
 
-//API types
-//---------
+//User modifiable API pointer types
+//---------------------------------
+
+//There are the pointers to the above user modifiably type.
+//They can be changed by the user, if needed, to facilitate different memory types and allocation strategies.
 
 //A pointer to a user visible variable
 typedef ee_variable_type * ee_variable;
+
+//A pointer to a user visible expression character
+typedef ee_char_type * ee_char;
+
+
+//API types
+//---------
 
 //The following two prototypes are for compiling the library with user-defined constant parsers.
 //Two functions with the below prototypes should be written.
@@ -78,8 +94,6 @@ typedef int (*ee_constant_parser)(const ee_char_type * start, const ee_char_type
 //It is posible to use the same function under different names and arities.
 typedef int (*ee_function)(ee_element_count arity, const ee_variable_type * actuals, ee_variable_type * result);
 
-//Type used for holding function flags
-typedef unsigned char ee_function_flags;
 
 typedef enum
 {
