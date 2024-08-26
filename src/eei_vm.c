@@ -87,7 +87,7 @@ enum
 //Virtual machine building
 //------------------------
 
-ee_parser_reply eei_vmmake_append_instruction(
+static ee_parser_reply eei_vmmake_append_instruction(
 		eei_vmmake_environment * vm,
 		ee_vm_bytecode instruction,
 		unsigned int immediate)

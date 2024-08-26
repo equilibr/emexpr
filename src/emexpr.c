@@ -1416,7 +1416,7 @@ typedef struct
 //Environment API utility
 //-----------------------
 
-void * eei_environment_calculate(
+static void * eei_environment_calculate(
 		void * data,
 		eei_vm_environment * environment,
 		const ee_data_size * sizes)
@@ -1433,7 +1433,7 @@ void * eei_environment_calculate(
 	return environment->stack + sizes->runtime_stack;
 }
 
-void eei_environment_copy(
+static void eei_environment_copy(
 		const eei_environment_struct * source,
 		eei_environment_struct * destination,
 		const ee_data_size * destination_size)
@@ -1468,7 +1468,7 @@ void eei_environment_copy(
 	destination->environment = dst;
 }
 
-void eei_guestimate_calculate_sizes(ee_data_size * size)
+static void eei_guestimate_calculate_sizes(ee_data_size * size)
 {
 	size->compilation_size = (ee_memory_size)(sizeof(eei_parser_node) * size->compilation_stack);
 	size->stack_size = (ee_memory_size)(sizeof(ee_variable_type) * size->runtime_stack);
