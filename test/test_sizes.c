@@ -13,11 +13,7 @@ static union
 	char data[pool_bytes];
 } global_symboltable;
 
-static union
-{
-	ee_compilation_header header;
-	char data[pool_bytes];
-} global_parser;
+static char global_parser_data[pool_bytes];
 
 static union
 {
@@ -155,14 +151,14 @@ static void test_diff_sizes(ee_data_size * dst, const ee_data_size * left, const
 	dst->runtime_stack = left->runtime_stack - right->runtime_stack;
 }
 
-static void test_print_location(const char * expression, const ee_compilation_header * header)
+static void test_print_location(const char * expression, const ee_location * error)
 {
-	int length = header->error_token_end - header->error_token_start;
-	int position = header->error_token_start - expression;
+	int length = error->end - error->start;
+	int position = error->start - expression;
 	printf("%5d %5d ",position, length);
 	if (length)
-		printf("%.*s",length, header->error_token_start);
-	else if (!*header->error_token_start)
+		printf("%.*s",length, error->start);
+	else if (!*error->start)
 		printf("END");
 	else
 		printf("START");
@@ -184,8 +180,13 @@ static int test_expression(const char * expression)
 	ee_data_size sizes;
 	ee_data_size sizes_guess;
 	ee_data_size sizes_delta;
+	ee_compilation parser;
+	ee_location error;
 
-	memset(&global_parser.header, 0, sizeof(ee_compilation_header));
+	parser.data = global_parser_data;
+	parser.size = pool_bytes;
+
+	memset(global_parser_data, 0, sizeof(pool_bytes));
 	memset(&global_environment.header, 0, sizeof(ee_environment_header));
 
 	printf("%24s ",expression);
@@ -193,7 +194,7 @@ static int test_expression(const char * expression)
 	ee_guestimate(expression, &sizes);
 	memcpy(&sizes_guess, &sizes, sizeof(ee_data_size));
 
-	ee_parser_reply reply = ee_compile(expression, &sizes, &global_symboltable.header, &global_parser.header, &global_environment.header);
+	ee_parser_reply reply = ee_compile(expression, &sizes, &global_symboltable.header, &parser, &error, &global_environment.header);
 	test_diff_sizes(&sizes_delta, &sizes_guess, &sizes);
 
 	if (reply >= ee_parser_error)
@@ -202,7 +203,7 @@ static int test_expression(const char * expression)
 		printf("%16s %10s ",eelib_compile_status_string_short(reply)," ");
 		test_print_sizes(&sizes);
 		test_print_sizes(&sizes_delta);
-		test_print_location(expression, &global_parser.header);
+		test_print_location(expression, &error);
 		printf("\n");
 		return 1;
 	}

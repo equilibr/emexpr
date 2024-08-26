@@ -64,11 +64,7 @@ static long double measure_evaluation(
 		char data[pool_bytes];
 	} symboltable;
 
-	static union
-	{
-		ee_compilation_header header;
-		char data[pool_bytes];
-	} parser;
+	char parser_data[pool_bytes];
 
 	static union
 	{
@@ -81,10 +77,13 @@ static long double measure_evaluation(
 	ee_symboltable_add(&symboltable.header, functions, variables);
 
 	ee_data_size sizes;
-	parser.header.flags = 0;
+	ee_compilation parser;
+
+	parser.data = parser_data;
+	parser.size = pool_bytes;
 
 	ee_guestimate(expression, &sizes);
-	if (ee_compile(expression, &sizes, &symboltable.header, &parser.header, &environment.header) >= ee_parser_error)
+	if (ee_compile(expression, &sizes, &symboltable.header, &parser, NULL, &environment.header) >= ee_parser_error)
 		return 0;
 
 	if (ee_evaluate(&environment.header, NULL) > ee_evaluator_stack_extra)
@@ -120,11 +119,7 @@ static long double measure_compilation(
 		char data[pool_bytes];
 	} symboltable;
 
-	static union
-	{
-		ee_compilation_header header;
-		char data[pool_bytes];
-	} parser;
+	char parser_data[pool_bytes];
 
 	static union
 	{
@@ -138,9 +133,13 @@ static long double measure_compilation(
 	ee_symboltable_add(&symboltable.header, NULL, NULL);
 
 	ee_data_size sizes;
+	ee_compilation parser;
+
+	parser.data = parser_data;
+	parser.size = pool_bytes;
 
 	ee_guestimate(expression, &sizes);
-	if (ee_compile(expression, &sizes, &symboltable.header, &parser.header, &environment.header) >= ee_parser_error)
+	if (ee_compile(expression, &sizes, &symboltable.header, &parser, NULL, &environment.header) >= ee_parser_error)
 		return 0;
 
 	long long int counts = 0;
@@ -148,10 +147,8 @@ static long double measure_compilation(
 	const clock_t start = clock();
 	do
 	{
-		parser.header.flags = 0;
-
 		ee_guestimate(expression, &sizes);
-		ee_compile(expression, &sizes, &symboltable.header, &parser.header, &environment.header);
+		ee_compile(expression, &sizes, &symboltable.header, &parser, NULL, &environment.header);
 
 		elapsed = clock() - start;
 		counts++;
