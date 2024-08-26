@@ -57,7 +57,7 @@ typedef unsigned char ee_vm_bytecode;
 typedef ee_variable_type * ee_variable;
 
 //A pointer to a user visible expression character
-typedef ee_char_type * ee_char;
+typedef ee_char_type * ee_char_ptr;
 
 
 //API types
@@ -394,15 +394,25 @@ typedef struct
 	ee_memory_size size;
 } ee_symboltable_header;
 
-//Semi-transparent header of the compilation environment
+//Text location in the parsed expression
 typedef struct
 {
-	int flags;
+	//The first character
+	const ee_char_type * start;
 
-	ee_parser_reply reply;
-	const ee_char_type * error_token_start;
-	const ee_char_type * error_token_end;
-} ee_compilation_header;
+	//The last character
+	const ee_char_type * end;
+} ee_location;
+
+//Compilation data
+typedef struct
+{
+	//Data buffer
+	void * data;
+
+	//Size of the data buffer
+	ee_memory_size size;
+} ee_compilation;
 
 //Semi-transparent header of the environment
 typedef struct
@@ -449,7 +459,8 @@ ee_parser_reply ee_compile(
 		const ee_char_type * expression,
 		ee_data_size * size,
 		const ee_symboltable_header * symboltable,
-		ee_compilation_header * compilation,
+		const ee_compilation * compilation,
+		ee_location * error,
 		ee_environment environment);
 
 //Evaluate the compiled environment

@@ -1384,8 +1384,6 @@ static void eei_parse_expression(eei_parser * parser)
 //Internal direct data held inside a compilation data structure
 typedef struct
 {
-	ee_compilation_header header;
-
 	char data[1];
 } eei_compilation_struct;
 
@@ -1637,7 +1635,8 @@ ee_parser_reply ee_compile(
 		const ee_char_type * expression,
 		ee_data_size * size,
 		const ee_symboltable_header * symboltable,
-		ee_compilation_header * compilation,
+		const ee_compilation * compilation,
+		ee_location * error,
 		ee_environment environment)
 {
 	eei_parser parser;
@@ -1645,16 +1644,23 @@ ee_parser_reply ee_compile(
 	//Setup the parser memory
 
 	eei_environment_struct * full_env = (eei_environment_struct *)environment;
-	eei_compilation_struct * full_compilation = (eei_compilation_struct *)compilation;
+	eei_compilation_struct * full_compilation = (eei_compilation_struct *)compilation->data;
 	eei_symboltable_struct * full_symboltable = (eei_symboltable_struct *)symboltable;
 
+	//Calculate the correctly aligned pointer
 	char * ptr = &full_compilation->data[0];
-	if (alignof(eei_parser_node))
-		while ((ptrdiff_t)ptr % alignof(eei_parser_node))
-			ptr++;
+	const ptrdiff_t misalign = (ptrdiff_t)ptr % alignof(eei_parser_node);
 
-	parser.stack.stack = (eei_parser_node*)ptr;
-	parser.stack.size = size->compilation_stack;
+	//Calculate how much (aligned) stack elements the data buffer can actually hold
+	const int stack_elements = (compilation->size - misalign) / sizeof(eei_parser_node);
+
+	//Make sure the data buffer is big enough to hold the expected stack
+	//Note that this would still work if the expected stack size is not calculated (zero)
+	if (stack_elements < size->compilation_stack)
+		return ee_parser_memory;
+
+	parser.stack.stack = (eei_parser_node*)(ptr + misalign);
+	parser.stack.size = stack_elements;
 	parser.stack.top = 0;
 	parser.stack.high = 0;
 
@@ -1708,32 +1714,33 @@ ee_parser_reply ee_compile(
 	eei_environment_compact(full_env, size, &parser);
 	eei_guestimate_calculate_sizes(size);
 
-	compilation->reply = parser.status;
-
 	//Detect special conditions on correctly parsed code
 	if (parser.status == ee_parser_ok)
 	{
 		if (parser.vm.current.instructions == 0)
 			//No instructions were generated
-			compilation->reply = ee_parser_empty;
+			parser.status = ee_parser_empty;
 		else if (parser.vm.current.stack == 0)
 		{
 			//The runtime variable stack would be empty after evaluation
 
 			if (parser.vm.max.stack > 0)
 				//The stack had data that was (most likely) stored
-				compilation->reply = ee_parser_store;
+				parser.status = ee_parser_store;
 			else
 				//The stack never had any data, thus surely none was stored,
 				//	and this is an actual error.
-				compilation->reply = ee_parser_noresult;
+				parser.status = ee_parser_noresult;
 		}
 	}
 
-	compilation->error_token_start = &parser.expression[parser.error_token.text.start];
-	compilation->error_token_end = &parser.expression[parser.error_token.text.end];
+	if (error)
+	{
+		error->start = &parser.expression[parser.error_token.text.start];
+		error->end = &parser.expression[parser.error_token.text.end];
+	}
 
-	return compilation->reply;
+	return parser.status;
 }
 
 ee_evaluator_reply ee_evaluate(ee_environment environment, ee_variable result)
