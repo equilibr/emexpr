@@ -65,12 +65,7 @@ static long double measure_evaluation(
 	} symboltable;
 
 	char parser_data[pool_bytes];
-
-	static union
-	{
-		ee_environment_header header;
-		char data[pool_bytes];
-	} environment;
+	char environment_data[pool_bytes];
 
 	symboltable.header._.flags = 0;
 	symboltable.header.size = sizeof(symboltable);
@@ -78,15 +73,19 @@ static long double measure_evaluation(
 
 	ee_data_size sizes;
 	ee_compilation parser;
+	ee_evaluation eval;
 
 	parser.data = parser_data;
 	parser.size = pool_bytes;
 
+	eval.data = environment_data;
+	eval.size = pool_bytes;
+
 	ee_guestimate(expression, &sizes);
-	if (ee_compile(expression, &sizes, &symboltable.header, &parser, NULL, &environment.header) >= ee_parser_error)
+	if (ee_compile(expression, &sizes, &symboltable.header, &parser, NULL, &eval) >= ee_parser_error)
 		return 0;
 
-	if (ee_evaluate(&environment.header, NULL) > ee_evaluator_stack_extra)
+	if (ee_evaluate(&eval, NULL) > ee_evaluator_stack_extra)
 		return 0;
 
 	long long int counts = 0;
@@ -94,7 +93,7 @@ static long double measure_evaluation(
 	const clock_t start = clock();
 	do
 	{
-		ee_evaluate(&environment.header, NULL);
+		ee_evaluate(&eval, NULL);
 		elapsed = clock() - start;
 		counts++;
 	} while (elapsed < (MeasureTime * CLOCKS_PER_SEC));
@@ -120,12 +119,7 @@ static long double measure_compilation(
 	} symboltable;
 
 	char parser_data[pool_bytes];
-
-	static union
-	{
-		ee_environment_header header;
-		char data[pool_bytes];
-	} environment;
+	char environment_data[pool_bytes];
 
 	symboltable.header._.flags = 0;
 	symboltable.header.size = sizeof(symboltable);
@@ -134,12 +128,16 @@ static long double measure_compilation(
 
 	ee_data_size sizes;
 	ee_compilation parser;
+	ee_evaluation eval;
 
 	parser.data = parser_data;
 	parser.size = pool_bytes;
 
+	eval.data = environment_data;
+	eval.size = pool_bytes;
+
 	ee_guestimate(expression, &sizes);
-	if (ee_compile(expression, &sizes, &symboltable.header, &parser, NULL, &environment.header) >= ee_parser_error)
+	if (ee_compile(expression, &sizes, &symboltable.header, &parser, NULL, &eval) >= ee_parser_error)
 		return 0;
 
 	long long int counts = 0;
@@ -148,7 +146,7 @@ static long double measure_compilation(
 	do
 	{
 		ee_guestimate(expression, &sizes);
-		ee_compile(expression, &sizes, &symboltable.header, &parser, NULL, &environment.header);
+		ee_compile(expression, &sizes, &symboltable.header, &parser, NULL, &eval);
 
 		elapsed = clock() - start;
 		counts++;

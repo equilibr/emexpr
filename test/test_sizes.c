@@ -14,12 +14,7 @@ static union
 } global_symboltable;
 
 static char global_parser_data[pool_bytes];
-
-static union
-{
-	ee_environment_header header;
-	char data[pool_bytes];
-} global_environment;
+static char global_environment_data[pool_bytes];
 
 
 static int mega(ee_element_count arity, const ee_variable_type * actuals, ee_variable result)
@@ -182,19 +177,20 @@ static int test_expression(const char * expression)
 	ee_data_size sizes_delta;
 	ee_compilation parser;
 	ee_location error;
+	ee_evaluation eval;
 
 	parser.data = global_parser_data;
 	parser.size = pool_bytes;
 
-	memset(global_parser_data, 0, sizeof(pool_bytes));
-	memset(&global_environment.header, 0, sizeof(ee_environment_header));
+	eval.data = global_environment_data;
+	eval.size = pool_bytes;
 
 	printf("%24s ",expression);
 
 	ee_guestimate(expression, &sizes);
 	memcpy(&sizes_guess, &sizes, sizeof(ee_data_size));
 
-	ee_parser_reply reply = ee_compile(expression, &sizes, &global_symboltable.header, &parser, &error, &global_environment.header);
+	ee_parser_reply reply = ee_compile(expression, &sizes, &global_symboltable.header, &parser, &error, &eval);
 	test_diff_sizes(&sizes_delta, &sizes_guess, &sizes);
 
 	if (reply >= ee_parser_error)
@@ -211,7 +207,7 @@ static int test_expression(const char * expression)
 	ee_variable_type result = 0;
 	ee_evaluator_reply ereply =
 			ee_evaluate(
-				&global_environment.header,
+				&eval,
 				(reply != ee_parser_store) ? &result : NULL);
 
 	if (reply || ereply)
