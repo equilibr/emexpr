@@ -1201,7 +1201,7 @@ ee_symboltable_reply ee_symboltable_add(
 //When a check fails the compilation will halt with an error of: "check type" declared as an array with a negative size
 struct check_type_sizes
 {
-		int not_enough_bits_for_symboltable_compaction[( sizeof(eei_symboltable_element_count) >= sizeof(ee_char_type) ) ? 1 : -1];
-		int location_variable_longer_than_ptr[(sizeof(ee_variable) >= sizeof(void*)) ? 1 : -1];
-		int location_function_longer_than_ptr[(sizeof(ee_function) >= sizeof(void*)) ? 1 : -1];
+		int not_enough_bits_for_symboltable_compaction[( sizeof(eei_symboltable_element_count) <= sizeof(ee_char_type) ) ? 1 : -1];
+		int location_variable_longer_than_ptr[(sizeof(ee_variable) <= sizeof(void*)) ? 1 : -1];
+		int location_function_longer_than_ptr[(sizeof(ee_function) <= sizeof(void*)) ? 1 : -1];
 };
