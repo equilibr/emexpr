@@ -1490,7 +1490,7 @@ ee_parser_reply ee_estimate(ee_memory_size length, ee_data_size * size)
 	//Assume any character can be any element, at the same time!
 	//This will grossly over-estimate the needed size but will make
 	// sure the allocated memory would be enough to parse and evaluate
-	// and expression of the given length.
+	// any expression of the given length.
 
 	//The below items always must be separated by, at least, one other symbol.
 	//Thus no more than half the expression can consist of any of them.
@@ -1499,7 +1499,7 @@ ee_parser_reply ee_estimate(ee_memory_size length, ee_data_size * size)
 	size->functions = length / 2 + 1;
 
 	//Worst case:
-	// An expression consisting of single character group start delimiters.
+	// An expression consisting of single character, the group start delimiters.
 	size->compilation_stack = 4 + length * 2;
 
 	//Worst case:
